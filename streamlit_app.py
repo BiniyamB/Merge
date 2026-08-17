@@ -14,7 +14,15 @@ from merger import MODES, merge_reports, build_filtered_workbook
 
 st.markdown("""
 <style>
-    #MainMenu, footer { display: none !important; }
+    #MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+    div[data-testid="stToolbar"] { display: none !important; }
+    div[data-testid="stDecoration"] { display: none !important; }
+    div[data-testid="stStatusWidget"] { display: none !important; }
+    #root > div > div > div > div > section > div { padding-top: 0rem !important; }
+    button[title="View fullscreen"] { display: none !important; }
+    div[data-testid="stDeployButton"] { display: none !important; }
+    footer { display: none !important; }
+    div.stProfiler { display: none !important; }
     .stApp { background: #0a1128; }
     .block-container { max-width: 1100px; padding-top: 2rem; }
     h1 span { background: linear-gradient(135deg, #ff3cac, #784ba0, #2b86c5);

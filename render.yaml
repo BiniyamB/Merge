@@ -3,7 +3,7 @@ services:
     name: report-merger
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: streamlit run streamlit_app.py --server.port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: "3.12"

@@ -1,8 +1,7 @@
-"""POS & ATM Report Merger — Streamlit version."""
+"""POS & ATM Report Merger -- Streamlit version."""
 
 import streamlit as st
 import pandas as pd
-from merger import MODES, merge_reports, build_filtered_workbook
 
 st.set_page_config(
     page_title="POS & ATM Report Merger",
@@ -11,9 +10,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+from merger import MODES, merge_reports, build_filtered_workbook
+
 st.markdown("""
 <style>
-    #MainMenu, header[data-testid="stHeader"], footer { display: none !important; }
+    #MainMenu, footer { display: none !important; }
     .stApp { background: #0a1128; }
     .block-container { max-width: 1100px; padding-top: 2rem; }
     h1 span { background: linear-gradient(135deg, #ff3cac, #784ba0, #2b86c5);

@@ -13,6 +13,7 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    #MainMenu, header[data-testid="stHeader"], footer { display: none !important; }
     .stApp { background: #0a1128; }
     .block-container { max-width: 1100px; padding-top: 2rem; }
     h1 span { background: linear-gradient(135deg, #ff3cac, #784ba0, #2b86c5);
@@ -32,17 +33,14 @@ st.markdown("""
         background: linear-gradient(135deg, #00e88f, #00b4d8) !important;
         color: #052e16 !important; border: none !important; border-radius: 10px !important;
         font-weight: 700 !important; }
-    .filter-sheet {
-        background: rgba(168,85,247,0.06); border: 1px solid rgba(168,85,247,0.15);
-        border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;
-        display: flex; align-items: center; gap: 10px; }
-    .filter-sheet .num {
-        background: linear-gradient(135deg, #a855f7, #6366f1); color: white;
-        width: 26px; height: 26px; border-radius: 8px; display: inline-flex;
-        align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 800; }
-    .filter-sheet .name { font-weight: 700; color: #c4b5fd; }
-    .filter-sheet .desc { color: #5a6a9a; font-size: 0.85rem; }
     hr { border-color: rgba(255,255,255,0.06) !important; }
+    .stRadio > div { flex-direction: row !important; gap: 1rem; }
+    div[data-baseweb="radio"] > label { background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+        padding: 8px 18px; margin: 0; cursor: pointer; }
+    div[data-baseweb="radio"] > label:hover { border-color: rgba(168,85,247,0.4); }
+    div[data-baseweb="radio"] input:checked + div {
+        background: linear-gradient(135deg, #a855f7, #6366f1) !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -69,29 +67,14 @@ st.divider()
 # ── Mode selection ───────────────────────────────────────────────────────────
 st.subheader("1. Choose report type")
 
-MODE_LABELS = {m.label: m.key for m in MODES.values()}
-col1, col2 = st.columns(2)
-with col1:
-    pos_decline = st.checkbox("POS Decline", value=False, key="chk_decline")
-    pos_success = st.checkbox("POS Success", value=False, key="chk_success")
-with col2:
-    pos_daily = st.checkbox("POS (Daily)", value=False, key="chk_pos")
-    atm_daily = st.checkbox("ATM (Daily)", value=False, key="chk_atm")
-
-selected_modes = []
-if pos_decline: selected_modes.append("pos_decline")
-if pos_success: selected_modes.append("pos_success")
-if pos_daily:   selected_modes.append("pos")
-if atm_daily:   selected_modes.append("atm")
-
-if len(selected_modes) == 0:
-    st.info("Select a report type above to continue.")
-    st.stop()
-if len(selected_modes) > 1:
-    st.warning("Please select only **one** report type at a time.")
-    st.stop()
-
-mode_key = selected_modes[0]
+mode_options = ["POS Decline", "POS Success", "POS (Daily)", "ATM (Daily)"]
+mode_keys_map = {
+    "POS Decline": "pos_decline",
+    "POS Success": "pos_success",
+    "POS (Daily)": "pos",
+    "ATM (Daily)": "atm",
+}
+mode_key = mode_keys_map[st.radio("Report type", mode_options, horizontal=True, label_visibility="collapsed")]
 mode = MODES[mode_key]
 st.session_state.mode_key = mode_key
 
@@ -172,12 +155,15 @@ if result.resp_counts:
         resp_df = pd.DataFrame(
             list(result.resp_counts.items()),
             columns=["Response Code", "Count"]
-        ).sort_values("Count", ascending=False)
+        ).sort_values("Count", ascending=False).head(15)
         st.bar_chart(resp_df.set_index("Response Code"))
 
 # Preview
 st.subheader("Preview")
-preview_df = pd.DataFrame(result.preview)
+preview_rows = []
+for row in result.preview:
+    preview_rows.append({k: str(v) if v is not None and v != "" else "—" for k, v in row.items()})
+preview_df = pd.DataFrame(preview_rows)
 st.dataframe(preview_df, use_container_width=True, hide_index=True, height=400)
 
 # Download merged

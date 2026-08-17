@@ -2,7 +2,7 @@
 
 import streamlit as st
 import pandas as pd
-from merger import MODES, merge_reports, build_filtered_workbook, _count_key
+from merger import MODES, merge_reports, build_filtered_workbook
 
 st.set_page_config(
     page_title="POS & ATM Report Merger",

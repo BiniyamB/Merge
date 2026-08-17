@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POS &amp; ATM Report Merger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <canvas id="particle-canvas"></canvas>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo-pulse">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18"/>
+            <path d="M7 15l3-4 3 3 4-6"/>
+          </svg>
+        </div>
+      </div>
+      <div class="brand-text">
+        <h1>Report <span class="gradient-text">Merger</span></h1>
+        <p>Consolidate POS &amp; ATM transaction reports</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="mode-chip hidden" id="mode-chip">
+        <span class="chip-dot"></span>
+        <span id="mode-chip-label"></span>
+        <a href="#" id="change-mode">switch</a>
+      </span>
+      <span class="memory-badge" title="Nothing is stored on disk.">
+        <span class="pulse-dot"></span> In-memory
+      </span>
+    </div>
+  </header>
+
+  <nav class="breadcrumbs hidden" id="breadcrumbs" aria-label="Breadcrumb">
+    <a href="#" id="crumb-home">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Home
+    </a>
+    <span class="crumb-sep" aria-hidden="true">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </span>
+    <span class="crumb-step" id="crumb-step2"></span>
+    <span class="crumb-sep hidden" id="crumb-sep3" aria-hidden="true">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </span>
+    <span class="crumb-step crumb-current" id="crumb-step3"></span>
+  </nav>
+
+  <main>
+    <section class="card mode-card" id="mode-card">
+      <div class="card-head">
+        <div class="card-head-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </div>
+        <div>
+          <h2>Choose report type</h2>
+          <p class="muted">What kind of reports do you want to merge?</p>
+        </div>
+      </div>
+      <div class="mode-grid">
+        <button type="button" class="mode-option mo-decline" data-mode="pos_decline">
+          <div class="mo-glow"></div>
+          <div class="mo-content">
+            <div class="mode-icon">
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+            </div>
+            <span class="mode-name">POS Decline</span>
+            <span class="mode-desc">Decline reports &rarr; <code>POS_Transaction_Decline_Report</code></span>
+            <span class="mode-tag">12 columns</span>
+          </div>
+        </button>
+        <button type="button" class="mode-option mo-success" data-mode="pos_success">
+          <div class="mo-glow"></div>
+          <div class="mo-content">
+            <div class="mode-icon">
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="9 12 11 14 15 10"/>
+              </svg>
+            </div>
+            <span class="mode-name">POS Success</span>
+            <span class="mode-desc">Success reports &rarr; <code>POS_Transaction_SVFE_Report</code></span>
+            <span class="mode-tag">11 columns</span>
+          </div>
+        </button>
+        <button type="button" class="mode-option mo-pos" data-mode="pos">
+          <div class="mo-glow"></div>
+          <div class="mo-content">
+            <div class="mode-icon">
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="5" width="20" height="14" rx="2"/>
+                <line x1="2" y1="10" x2="22" y2="10"/>
+                <circle cx="17" cy="15" r="2.2"/>
+                <line x1="18.5" y1="10" x2="19" y2="13"/>
+              </svg>
+            </div>
+            <span class="mode-name">POS</span>
+            <span class="mode-desc">Daily POS &rarr; <code>SmartVista_POS</code></span>
+            <span class="mode-tag">12 columns</span>
+          </div>
+        </button>
+        <button type="button" class="mode-option mo-atm" data-mode="atm">
+          <div class="mo-glow"></div>
+          <div class="mo-content">
+            <div class="mode-icon">
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="2" width="16" height="20" rx="2"/>
+                <line x1="8" y1="6" x2="16" y2="6"/>
+                <line x1="12" y1="10" x2="12" y2="16"/>
+                <line x1="9" y1="14" x2="15" y2="14"/>
+              </svg>
+            </div>
+            <span class="mode-name">ATM</span>
+            <span class="mode-desc">Daily ATM &rarr; <code>SmartVista_ATM</code></span>
+            <span class="mode-tag">13 columns</span>
+          </div>
+        </button>
+      </div>
+    </section>
+
+    <section class="card hidden" id="upload-card">
+      <div class="card-head">
+        <div class="card-head-icon upload-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div>
+          <h2>Upload reports</h2>
+          <p class="muted" id="upload-subtitle"></p>
+        </div>
+      </div>
+
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="file-input" accept=".xls,.xlsx" multiple hidden>
+        <div class="dz-rings">
+          <div class="ring ring-1"></div>
+          <div class="ring ring-2"></div>
+          <div class="ring ring-3"></div>
+        </div>
+        <div class="dz-content">
+          <div class="dz-icon-wrap">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <p class="dz-title"><strong>Drag &amp; drop</strong> your reports here</p>
+          <p class="muted small">or click to browse &middot; .xls / .xlsx files</p>
+        </div>
+      </div>
+
+      <ul class="file-list" id="file-list"></ul>
+
+      <div class="actions">
+        <button class="btn btn-merge" id="merge-btn" disabled>
+          <span class="btn-shine"></span>
+          <span class="btn-label">Merge reports</span>
+          <svg class="btn-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <div class="error hidden" id="error-banner" role="alert">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      <span id="error-text"></span>
+    </div>
+
+    <div class="warn hidden" id="warn-banner" role="alert">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div>
+        <strong>Column mismatches detected</strong>
+        <ul id="warn-list"></ul>
+      </div>
+    </div>
+
+    <section class="card hidden" id="results-card">
+      <div class="card-head">
+        <div class="card-head-icon result-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <div>
+          <h2>Merged report</h2>
+          <p class="muted" id="result-subtitle"></p>
+        </div>
+      </div>
+
+      <div class="stats" id="stats"></div>
+
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Response code distribution</h3>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="resp-chart"></canvas>
+            <div id="chart-fallback" class="hidden"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Files merged</h3>
+          </div>
+          <div class="table-wrap mini">
+            <table class="data-table" id="files-table"></table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Preview <span class="muted small" id="preview-count"></span></h3>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="preview-table"></table>
+        </div>
+      </div>
+
+      <div class="actions">
+        <a class="btn btn-download" id="download-btn" download>
+          <span class="btn-shine"></span>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span class="btn-label">Download merged report</span>
+        </a>
+      </div>
+
+      <div class="filter-divider"><span>or filter into sheets</span></div>
+
+      <section class="filter-panel" id="filter-panel">
+        <div class="filter-panel-head">
+          <div class="card-head-icon filter-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          </div>
+          <div>
+            <h3>Filter &amp; export to sheets</h3>
+            <p class="muted small">Each filter combination becomes a separate sheet in the downloaded Excel file.</p>
+          </div>
+        </div>
+
+        <div class="filter-row" id="filter-row">
+          <div class="filter-group">
+            <label class="filter-label">Column</label>
+            <select class="filter-select" id="filter-col">
+              <option value="">Select column...</option>
+            </select>
+          </div>
+          <div class="filter-group filter-values-wrap">
+            <label class="filter-label">Value</label>
+            <select class="filter-select" id="filter-val" disabled>
+              <option value="">Select a column first...</option>
+            </select>
+          </div>
+          <div class="filter-group filter-count-wrap">
+            <label class="filter-label">Matches</label>
+            <div class="filter-count" id="filter-count">-</div>
+          </div>
+          <button class="btn btn-add-sheet" id="add-sheet-btn" disabled title="Add as new sheet">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add sheet
+          </button>
+        </div>
+
+        <ul class="sheet-list" id="sheet-list"></ul>
+
+        <div class="filter-actions" id="filter-actions" style="display:none;">
+          <button class="btn btn-filter-download" id="filter-download-btn">
+            <span class="btn-shine"></span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span class="btn-label">Download filtered report</span>
+          </button>
+          <button class="btn btn-clear-sheets" id="clear-sheets-btn">Clear all</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <p>Reports are processed entirely in memory &mdash; nothing is saved to disk.</p>
+  </footer>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

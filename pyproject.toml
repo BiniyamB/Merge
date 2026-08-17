@@ -1,0 +1,23 @@
+[project]
+name = "pos-report-merger"
+version = "0.1.0"
+description = "Merge any number of POS decline reports into one clean Excel report via a web dashboard"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0",
+    "pandas>=2.0",
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+    "xlsxwriter>=3.2.9",
+    "python-calamine>=0.8.2",
+    "lxml>=6.1.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

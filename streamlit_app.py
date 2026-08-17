@@ -161,7 +161,7 @@ if result.resp_counts:
 # Preview
 st.subheader("Preview")
 preview_rows = []
-for row in result.preview:
+for row in result.records[:50]:
     preview_rows.append({k: str(v) if v is not None and v != "" else "—" for k, v in row.items()})
 preview_df = pd.DataFrame(preview_rows)
 st.dataframe(preview_df, use_container_width=True, hide_index=True, height=400)

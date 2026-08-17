@@ -5,151 +5,313 @@ import pandas as pd
 
 st.set_page_config(
     page_title="POS & ATM Report Merger",
-    page_icon=":bar_chart:",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
 from merger import MODES, merge_reports, build_filtered_workbook
 
+# ── Global CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    #MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+    /* Hide Streamlit chrome */
+    #MainMenu, footer, header[data-testid="stHeader"] {
+        visibility: hidden !important; height: 0 !important;
+        margin: 0 !important; padding: 0 !important; }
     div[data-testid="stToolbar"] { display: none !important; }
     div[data-testid="stDecoration"] { display: none !important; }
     div[data-testid="stStatusWidget"] { display: none !important; }
-    #root > div > div > div > div > section > div { padding-top: 0rem !important; }
-    button[title="View fullscreen"] { display: none !important; }
     div[data-testid="stDeployButton"] { display: none !important; }
-    footer { display: none !important; }
+    button[title="View fullscreen"] { display: none !important; }
     div.stProfiler { display: none !important; }
-    .stApp { background: #0a1128; }
-    .block-container { max-width: 1100px; padding-top: 2rem; }
-    h1 span { background: linear-gradient(135deg, #ff3cac, #784ba0, #2b86c5);
-              -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+    /* Base */
+    .stApp {
+        background: linear-gradient(160deg, #050a18 0%, #0a1128 40%, #0d1a30 100%);
+        font-family: 'Plus Jakarta Sans', sans-serif; }
+    .block-container { max-width: 1100px; padding-top: 1.5rem; padding-bottom: 2rem; }
+
+    /* Gradient text */
+    .gradient-title {
+        font-size: 2.2rem; font-weight: 800; letter-spacing: -1px;
+        background: linear-gradient(135deg, #ff3cac 0%, #784ba0 40%, #2b86c5 80%, #00d4ff 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        margin-bottom: 0; }
+    .subtitle { color: #5a6a9a; font-size: 0.95rem; margin-top: -4px; }
+
+    /* Cards */
+    .card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 16px; padding: 24px 28px; margin-bottom: 20px;
+        backdrop-filter: blur(12px); }
+    .card-head {
+        display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .card-icon {
+        width: 38px; height: 38px; border-radius: 10px; display: flex;
+        align-items: center; justify-content: center; font-size: 1.1rem;
+        flex-shrink: 0; }
+    .icon-blue { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.15); }
+    .icon-purple { background: rgba(168,85,247,0.1); border: 1px solid rgba(168,85,247,0.15); }
+    .icon-green { background: rgba(0,232,143,0.1); border: 1px solid rgba(0,232,143,0.15); }
+    .icon-pink { background: rgba(255,60,172,0.1); border: 1px solid rgba(255,60,172,0.15); }
+    .card-title { font-size: 1.05rem; font-weight: 700; color: #f0f4ff; margin: 0; }
+    .card-sub { font-size: 0.8rem; color: #5a6a9a; margin: 2px 0 0; }
+
+    /* Metrics */
     div[data-testid="stMetric"] {
-        background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px; padding: 12px 16px; }
-    div[data-testid="stMetric"] label { color: #5a6a9a !important; }
-    div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: #00d4ff !important; }
-    section[data-testid="stSidebar"] { background: #050a18; }
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 14px; padding: 16px 18px;
+        transition: transform 0.2s, border-color 0.2s; }
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        border-color: rgba(168,85,247,0.2); }
+    div[data-testid="stMetric"] label {
+        color: #5a6a9a !important; font-size: 0.72rem !important;
+        text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700 !important; }
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        color: #00d4ff !important; font-size: 1.6rem !important; font-weight: 800 !important; }
+
+    /* Radio mode selector */
+    div[data-baseweb="radio"] > label {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 12px; padding: 14px 22px; margin: 0;
+        cursor: pointer; transition: all 0.25s;
+        display: flex; align-items: center; gap: 8px; }
+    div[data-baseweb="radio"] > label:hover {
+        border-color: rgba(168,85,247,0.3);
+        background: rgba(168,85,247,0.04); }
+    div[data-baseweb="radio"] > label[data-checked="true"] {
+        border-color: rgba(168,85,247,0.4);
+        background: rgba(168,85,247,0.08); }
+    div[data-baseweb="radio"] > label[data-checked="true"] > div {
+        color: #c4b5fd !important; font-weight: 700 !important; }
+
+    /* Buttons */
     .stButton > button {
-        background: linear-gradient(135deg, #ff3cac, #784ba0, #2b86c5) !important;
-        color: white !important; border: none !important; border-radius: 10px !important;
-        font-weight: 700 !important; padding: 0.5rem 2rem !important; }
-    .stButton > button:hover { opacity: 0.9; transform: translateY(-1px); }
+        background: linear-gradient(135deg, #ff3cac 0%, #784ba0 50%, #2b86c5 100%) !important;
+        color: white !important; border: none !important; border-radius: 12px !important;
+        font-weight: 700 !important; font-size: 0.92rem !important;
+        padding: 0.6rem 2.5rem !important;
+        box-shadow: 0 4px 20px rgba(255,60,172,0.2) !important;
+        transition: all 0.3s !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
+    .stButton > button:hover {
+        box-shadow: 0 6px 28px rgba(255,60,172,0.35) !important;
+        transform: translateY(-2px) !important; }
+    .stButton > button:active { transform: translateY(0) !important; }
+
     div[data-testid="stDownloadButton"] > button {
-        background: linear-gradient(135deg, #00e88f, #00b4d8) !important;
-        color: #052e16 !important; border: none !important; border-radius: 10px !important;
-        font-weight: 700 !important; }
-    hr { border-color: rgba(255,255,255,0.06) !important; }
-    .stRadio > div { flex-direction: row !important; gap: 1rem; }
-    div[data-baseweb="radio"] > label { background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
-        padding: 8px 18px; margin: 0; cursor: pointer; }
-    div[data-baseweb="radio"] > label:hover { border-color: rgba(168,85,247,0.4); }
-    div[data-baseweb="radio"] input:checked + div {
-        background: linear-gradient(135deg, #a855f7, #6366f1) !important; }
+        background: linear-gradient(135deg, #00e88f 0%, #00b4d8 100%) !important;
+        color: #052e16 !important; border: none !important; border-radius: 12px !important;
+        font-weight: 700 !important; font-size: 0.92rem !important;
+        padding: 0.6rem 2.5rem !important;
+        box-shadow: 0 4px 20px rgba(0,232,143,0.2) !important;
+        transition: all 0.3s !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
+    div[data-testid="stDownloadButton"] > button:hover {
+        box-shadow: 0 6px 28px rgba(0,232,143,0.35) !important;
+        transform: translateY(-2px) !important; }
+
+    /* Filter download button */
+    .filter-dl > button {
+        background: linear-gradient(135deg, #a855f7 0%, #6366f1 50%, #3b82f6 100%) !important;
+        color: white !important;
+        box-shadow: 0 4px 20px rgba(168,85,247,0.2) !important; }
+
+    /* Selectbox */
+    div[data-baseweb="select"] > div {
+        background: rgba(255,255,255,0.04) !important;
+        border-color: rgba(255,255,255,0.08) !important;
+        border-radius: 10px !important; }
+    div[data-baseweb="select"]:hover > div {
+        border-color: rgba(168,85,247,0.3) !important; }
+    div[data-baseweb="select"] > div:focus-within {
+        border-color: #a855f7 !important;
+        box-shadow: 0 0 0 2px rgba(168,85,247,0.15) !important; }
+
+    /* File uploader */
+    section[data-testid="stFileUploadDropzone"] {
+        background: rgba(255,255,255,0.02) !important;
+        border: 2px dashed rgba(0,212,255,0.2) !important;
+        border-radius: 16px !important; }
+    section[data-testid="stFileUploadDropzone"]:hover {
+        border-color: rgba(0,212,255,0.4) !important;
+        background: rgba(0,212,255,0.02) !important; }
+
+    /* Tables */
+    .stDataFrame { border-radius: 12px !important; overflow: hidden; }
+
+    /* Expanders */
+    details[data-testid="stExpander"] {
+        background: rgba(255,255,255,0.02) !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        border-radius: 12px !important; }
+    details[data-testid="stExpander"] summary { font-weight: 700 !important; }
+
+    /* Dividers */
+    hr { border-color: rgba(255,255,255,0.05) !important; opacity: 0.5; }
+
+    /* Success / Warning / Error boxes */
+    div[data-testid="stAlert"] { border-radius: 12px !important; }
+
+    /* Badges */
+    .badge {
+        display: inline-block; padding: 3px 10px; border-radius: 999px;
+        font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.5px; }
+    .badge-green { background: rgba(0,232,143,0.12); color: #00e88f; border: 1px solid rgba(0,232,143,0.25); }
+    .badge-purple { background: rgba(168,85,247,0.12); color: #c4b5fd; border: 1px solid rgba(168,85,247,0.25); }
+    .badge-red { background: rgba(255,71,87,0.12); color: #ff8a8a; border: 1px solid rgba(255,71,87,0.25); }
+    .badge-blue { background: rgba(0,212,255,0.12); color: #00d4ff; border: 1px solid rgba(0,212,255,0.25); }
+
+    /* Filter sheet items */
+    .sheet-item {
+        background: rgba(168,85,247,0.04);
+        border: 1px solid rgba(168,85,247,0.12);
+        border-radius: 10px; padding: 12px 16px; margin-bottom: 8px;
+        display: flex; align-items: center; gap: 10px; }
+    .sheet-num {
+        background: linear-gradient(135deg, #a855f7, #6366f1); color: white;
+        width: 26px; height: 26px; border-radius: 8px; display: inline-flex;
+        align-items: center; justify-content: center;
+        font-size: 0.7rem; font-weight: 800; flex-shrink: 0; }
+    .sheet-name { font-weight: 700; color: #c4b5fd; }
+    .sheet-desc { color: #5a6a9a; font-size: 0.82rem; }
+    .sheet-rows { color: #5a6a9a; font-size: 0.75rem; margin-left: auto; white-space: nowrap; }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] { background: #050a18 !important; }
+
+    /* Separator with text */
+    .section-sep {
+        text-align: center; margin: 28px 0 10px; position: relative; }
+    .section-sep::before {
+        content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(168,85,247,0.2), transparent); }
+    .section-sep span {
+        position: relative; background: rgba(10,17,40,0.95); padding: 6px 20px;
+        font-size: 0.75rem; font-weight: 700; color: #a855f7;
+        text-transform: uppercase; letter-spacing: 1px; border-radius: 999px;
+        border: 1px solid rgba(168,85,247,0.15); }
 </style>
 """, unsafe_allow_html=True)
 
 # ── State ────────────────────────────────────────────────────────────────────
-if "merge_result" not in st.session_state:
-    st.session_state.merge_result = None
-if "filter_sheets" not in st.session_state:
-    st.session_state.filter_sheets = []
-if "unique_values" not in st.session_state:
-    st.session_state.unique_values = {}
-if "records" not in st.session_state:
-    st.session_state.records = []
-if "columns" not in st.session_state:
-    st.session_state.columns = []
-if "mode_key" not in st.session_state:
-    st.session_state.mode_key = None
+for key, default in [
+    ("merge_result", None), ("filter_sheets", []), ("unique_values", {}),
+    ("records", []), ("columns", []), ("mode_key", None),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 # ── Header ───────────────────────────────────────────────────────────────────
-st.markdown("# POS & ATM <span>Report Merger</span>", unsafe_allow_html=True)
-st.caption("Consolidate POS & ATM transaction reports — in memory, nothing saved to disk.")
+st.markdown('<p class="gradient-title">POS & ATM Report Merger</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Consolidate POS & ATM transaction reports &mdash; in memory, nothing saved to disk.</p>', unsafe_allow_html=True)
 
-st.divider()
-
-# ── Mode selection ───────────────────────────────────────────────────────────
-st.subheader("1. Choose report type")
+# ── Mode Selection ───────────────────────────────────────────────────────────
+st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-purple">1</div><div><p class="card-title">Choose report type</p><p class="card-sub">Select the type of reports you want to merge</p></div></div>', unsafe_allow_html=True)
 
 mode_options = ["POS Decline", "POS Success", "POS (Daily)", "ATM (Daily)"]
 mode_keys_map = {
-    "POS Decline": "pos_decline",
-    "POS Success": "pos_success",
-    "POS (Daily)": "pos",
-    "ATM (Daily)": "atm",
+    "POS Decline": "pos_decline", "POS Success": "pos_success",
+    "POS (Daily)": "pos", "ATM (Daily)": "atm",
 }
-mode_key = mode_keys_map[st.radio("Report type", mode_options, horizontal=True, label_visibility="collapsed")]
-mode = MODES[mode_key]
-st.session_state.mode_key = mode_key
+mode_colors = {
+    "POS Decline": "badge-red", "POS Success": "badge-green",
+    "POS (Daily)": "badge-purple", "ATM (Daily)": "badge-blue",
+}
 
-# ── File upload ──────────────────────────────────────────────────────────────
-st.subheader(f"2. Upload {mode.label} reports")
+cols = st.columns(4)
+selected = None
+for i, opt in enumerate(mode_options):
+    with cols[i]:
+        if st.button(opt, key=f"mode_{i}", use_container_width=True):
+            st.session_state.mode_key = mode_keys_map[opt]
+            st.session_state.merge_result = None
+            st.session_state.filter_sheets = []
+
+if st.session_state.mode_key is None:
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.info("Select a report type above to get started.")
+    st.stop()
+
+mode_key = st.session_state.mode_key
+mode = MODES[mode_key]
+mode_label = [k for k, v in mode_keys_map.items() if v == mode_key][0]
+
+st.markdown(f'<span class="badge {mode_colors.get(mode_label, "badge-blue")}">{mode.label}</span>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ── File Upload ──────────────────────────────────────────────────────────────
+st.markdown(f'<div class="card"><div class="card-head"><div class="card-icon icon-blue">2</div><div><p class="card-title">Upload {mode.label} reports</p><p class="card-sub">Drag & drop your .xls or .xlsx files</p></div></div>', unsafe_allow_html=True)
 
 uploaded_files = st.file_uploader(
-    "Drag & drop your Excel files here",
+    "Upload files",
     type=["xls", "xlsx"],
     accept_multiple_files=True,
-    help="One or more .xls / .xlsx files",
+    label_visibility="collapsed",
 )
 
 if not uploaded_files:
+    st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-st.success(f"**{len(uploaded_files)}** file(s) ready:")
 for f in uploaded_files:
     size_kb = f.size / 1024
-    st.markdown(f"  - `{f.name}` ({size_kb:.1f} KB)")
+    label = f"{size_kb:.0f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
+    st.markdown(f'<div class="sheet-item"><div class="sheet-num">{len(uploaded_files)}</div><span class="sheet-name">{f.name}</span><span class="sheet-rows">{label}</span></div>', unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Merge ────────────────────────────────────────────────────────────────────
-st.divider()
+if st.session_state.merge_result is None:
+    if st.button("Merge Reports", use_container_width=True):
+        with st.spinner("Merging reports..."):
+            payloads = [(f.name, f.getvalue()) for f in uploaded_files]
+            try:
+                result = merge_reports(payloads, mode_key=mode_key)
+            except ValueError as e:
+                st.error(str(e))
+                st.stop()
 
-if st.button("Merge Reports", key="merge_btn", use_container_width=True):
-    with st.spinner("Merging reports..."):
-        payloads = [(f.name, f.getvalue()) for f in uploaded_files]
-        try:
-            result = merge_reports(payloads, mode_key=mode_key)
-        except ValueError as e:
-            st.error(str(e))
-            st.stop()
+        st.session_state.merge_result = result
+        st.session_state.records = result.records
+        st.session_state.columns = list(result.records[0].keys()) if result.records else []
+        st.session_state.filter_sheets = []
 
-    st.session_state.merge_result = result
-    st.session_state.records = result.records
-    st.session_state.columns = list(result.records[0].keys()) if result.records else []
-    st.session_state.filter_sheets = []
+        unique_vals = {}
+        for col in st.session_state.columns:
+            vals = sorted({str(r.get(col, "")).strip() for r in result.records if r.get(col, "") not in ("", None)})
+            unique_vals[col] = vals
+        st.session_state.unique_values = unique_vals
+        st.rerun()
 
-    # Compute unique values per column
-    unique_vals = {}
-    for col in st.session_state.columns:
-        vals = sorted({str(r.get(col, "")).strip() for r in result.records if r.get(col, "") not in ("", None)})
-        unique_vals[col] = vals
-    st.session_state.unique_values = unique_vals
-
-    st.success("Merge complete!")
+    st.stop()
 
 # ── Results ──────────────────────────────────────────────────────────────────
 result = st.session_state.merge_result
-if result is None:
-    st.stop()
 
-st.divider()
-st.subheader(f"Merged Report — {result.mode_label}")
+st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-green">&#10003;</div><div><p class="card-title">Merged Report</p><p class="card-sub">All reports consolidated successfully</p></div></div>', unsafe_allow_html=True)
 
 # Stats
 ok_files = [p for p in result.per_file if p["status"] == "ok"]
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Transactions", f"{result.total_rows:,}")
-c2.metric("Date Range", f"{result.from_date} → {result.to_date}" if result.from_date != result.to_date else result.from_date)
+if result.from_date == result.to_date:
+    date_str = result.from_date
+else:
+    date_str = f"{result.from_date} \u2192 {result.to_date}"
+c2.metric("Date Range", date_str)
 c3.metric("Files Merged", len(ok_files))
 c4.metric("Response Codes", len(result.resp_counts))
 
 # Warnings
 if result.warnings:
-    with st.expander("Warnings", expanded=False):
+    with st.expander(f"Warnings ({len(result.warnings)})", expanded=False):
         for w in result.warnings:
             st.warning(w)
 
@@ -168,15 +330,15 @@ if result.resp_counts:
         st.bar_chart(resp_df.set_index("Response Code"))
 
 # Preview
-st.subheader("Preview")
+st.markdown(f'<div class="card-head"><div class="card-icon icon-blue">&#128269;</div><div><p class="card-title">Preview</p><p class="card-sub">First {min(len(result.records), 50)} of {result.total_rows:,} rows</p></div></div>', unsafe_allow_html=True)
 preview_rows = []
 for row in result.records[:50]:
-    preview_rows.append({k: str(v) if v is not None and v != "" else "—" for k, v in row.items()})
+    preview_rows.append({k: str(v) if v is not None and v != "" else "\u2014" for k, v in row.items()})
 preview_df = pd.DataFrame(preview_rows)
-st.dataframe(preview_df, use_container_width=True, hide_index=True, height=400)
+st.dataframe(preview_df, use_container_width=True, hide_index=True, height=380)
 
 # Download merged
-st.divider()
+st.markdown('<div class="section-sep"><span>Download</span></div>', unsafe_allow_html=True)
 st.download_button(
     label="Download Merged Report",
     data=result.workbook_bytes,
@@ -185,10 +347,10 @@ st.download_button(
     use_container_width=True,
 )
 
+st.markdown('</div>', unsafe_allow_html=True)
+
 # ── Filter Panel ─────────────────────────────────────────────────────────────
-st.divider()
-st.subheader("3. Filter & Export to Sheets")
-st.caption("Each filter combination becomes a separate sheet in the downloaded Excel file.")
+st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-pink">&#9660;</div><div><p class="card-title">Filter & Export to Sheets</p><p class="card-sub">Each filter combination becomes a separate sheet in the downloaded Excel file</p></div></div>', unsafe_allow_html=True)
 
 col_a, col_b, col_c = st.columns([2, 3, 1])
 
@@ -203,30 +365,36 @@ with col_a:
 
 with col_b:
     if filter_col:
-        vals = ["(All — no filter)"] + st.session_state.unique_values.get(filter_col, [])
+        vals = ["(All \u2014 no filter)"] + st.session_state.unique_values.get(filter_col, [])
         filter_val = st.selectbox("Value", options=vals, key="filter_val_select", index=0)
     else:
-        filter_val = st.selectbox("Value", options=["Select a column first..."], key="filter_val_select", disabled=True)
+        filter_val = st.selectbox(
+            "Value",
+            options=["Select a column first..."],
+            key="filter_val_select",
+            disabled=True,
+        )
 
 with col_c:
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     if st.button("+ Add Sheet", key="add_sheet_btn", disabled=not filter_col, use_container_width=True):
         filters = {}
-        if filter_col and filter_val and filter_val != "(All — no filter)":
+        if filter_col and filter_val and filter_val != "(All \u2014 no filter)":
             filters[filter_col] = filter_val
 
-        # Count rows
         if not filters:
             count = len(st.session_state.records)
             name = "All"
         else:
             val_upper = str(list(filters.values())[0]).upper()
             col_name = list(filters.keys())[0]
-            count = sum(1 for r in st.session_state.records if str(r.get(col_name, "")).upper() == val_upper)
+            count = sum(
+                1 for r in st.session_state.records
+                if str(r.get(col_name, "")).upper() == val_upper
+            )
             val_short = filter_val[:15] + "..." if len(filter_val) > 15 else filter_val
             name = f"{filter_col}_{val_short}"
 
-        # Check duplicate
         key = str(filters)
         if not any(str(s["filters"]) == key for s in st.session_state.filter_sheets):
             st.session_state.filter_sheets.append({"name": name, "filters": filters, "count": count})
@@ -236,53 +404,66 @@ with col_c:
 
 # Display filter sheets
 if st.session_state.filter_sheets:
-    st.markdown("**Sheets to export:**")
     for i, sheet in enumerate(st.session_state.filter_sheets):
-        col1, col2, col3 = st.columns([0.5, 5, 0.5])
-        with col1:
-            st.markdown(f"**{i+1}.**")
-        with col2:
-            if sheet["filters"]:
-                desc = ", ".join(f"`{k}` = `{v}`" for k, v in sheet["filters"].items())
-            else:
-                desc = "All rows (unfiltered)"
-            st.markdown(f"**{sheet['name']}** — {desc} — ~{sheet['count']:,} rows")
-        with col3:
-            if st.button("X", key=f"rm_sheet_{i}"):
+        if sheet["filters"]:
+            desc = ", ".join(f"<code>{k}</code> = <code>{v}</code>" for k, v in sheet["filters"].items())
+        else:
+            desc = "All rows (unfiltered)"
+        st.markdown(
+            f'<div class="sheet-item">'
+            f'<div class="sheet-num">{i+1}</div>'
+            f'<span class="sheet-name">{sheet["name"]}</span>'
+            f'<span class="sheet-desc">{desc}</span>'
+            f'<span class="sheet-rows">~{sheet["count"]:,} rows</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # Remove buttons in a row
+    rm_cols = st.columns(len(st.session_state.filter_sheets))
+    for i, col in enumerate(rm_cols):
+        with col:
+            if st.button("Remove", key=f"rm_{i}", use_container_width=True):
                 st.session_state.filter_sheets.pop(i)
                 st.rerun()
 
     # Download filtered
-    st.divider()
-    col_dl, col_clr = st.columns([3, 1])
+    st.markdown('<div class="section-sep"><span>Download Filtered</span></div>', unsafe_allow_html=True)
+    col_dl, col_clr = st.columns([4, 1])
     with col_dl:
-        with st.spinner("Generating filtered workbook..."):
-            try:
-                mode_obj = MODES[st.session_state.mode_key]
-                filtered_wb = build_filtered_workbook(
-                    st.session_state.records,
-                    st.session_state.columns,
-                    st.session_state.filter_sheets,
-                    mode_obj,
-                )
-                if len(st.session_state.filter_sheets) == 1:
-                    dl_name = f"{mode_obj.output_prefix}_{st.session_state.filter_sheets[0]['name']}_Filtered.xlsx"
-                else:
-                    dl_name = f"{mode_obj.output_prefix}_Filtered_{len(st.session_state.filter_sheets)}_Sheets.xlsx"
+        try:
+            mode_obj = MODES[st.session_state.mode_key]
+            filtered_wb = build_filtered_workbook(
+                st.session_state.records,
+                st.session_state.columns,
+                st.session_state.filter_sheets,
+                mode_obj,
+            )
+            if len(st.session_state.filter_sheets) == 1:
+                dl_name = f"{mode_obj.output_prefix}_{st.session_state.filter_sheets[0]['name']}_Filtered.xlsx"
+            else:
+                dl_name = f"{mode_obj.output_prefix}_Filtered_{len(st.session_state.filter_sheets)}_Sheets.xlsx"
 
-                st.download_button(
-                    label=f"Download Filtered Report ({len(st.session_state.filter_sheets)} sheets)",
-                    data=filtered_wb,
-                    file_name=dl_name,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                )
-            except Exception as e:
-                st.error(f"Error building workbook: {e}")
+            st.download_button(
+                label=f"Download Filtered Report ({len(st.session_state.filter_sheets)} sheets)",
+                data=filtered_wb,
+                file_name=dl_name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="filter_dl",
+            )
+        except Exception as e:
+            st.error(f"Error: {e}")
 
     with col_clr:
-        if st.button("Clear All", key="clear_sheets"):
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        if st.button("Clear All", key="clear_sheets", use_container_width=True):
             st.session_state.filter_sheets = []
             st.rerun()
 else:
     st.info("Use the dropdowns above to add filter sheets, then download a multi-sheet Excel file.")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ── Footer ───────────────────────────────────────────────────────────────────
+st.markdown('<div style="text-align:center;color:#2a3560;font-size:0.75rem;padding:16px 0 0;">Reports are processed entirely in memory &mdash; nothing is saved to disk.</div>', unsafe_allow_html=True)

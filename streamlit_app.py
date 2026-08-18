@@ -205,6 +205,7 @@ for key, default in [
     ("merge_result", None), ("filter_sheets", []), ("unique_values", {}),
     ("records", []), ("columns", []), ("mode_key", None),
     ("pending_filters", {}), ("pending_col", None),
+    ("filtered_workbook", None), ("filtered_dl_name", ""),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -234,6 +235,7 @@ for i, opt in enumerate(mode_options):
             st.session_state.mode_key = mode_keys_map[opt]
             st.session_state.merge_result = None
             st.session_state.filter_sheets = []
+            st.session_state.filtered_workbook = None
 
 if st.session_state.mode_key is None:
     st.markdown('</div>', unsafe_allow_html=True)
@@ -283,6 +285,7 @@ if st.session_state.merge_result is None:
         st.session_state.records = result.records
         st.session_state.columns = list(result.records[0].keys()) if result.records else []
         st.session_state.filter_sheets = []
+        st.session_state.filtered_workbook = None
 
         unique_vals = {}
         for col in st.session_state.columns:
@@ -355,6 +358,32 @@ st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon
 
 if "pending_filters" not in st.session_state:
     st.session_state.pending_filters = {}
+if "filtered_workbook" not in st.session_state:
+    st.session_state.filtered_workbook = None
+if "filtered_dl_name" not in st.session_state:
+    st.session_state.filtered_dl_name = ""
+
+def _rebuild_filtered_workbook():
+    """Rebuild the filtered workbook and store in session state."""
+    mode_obj = MODES[st.session_state.mode_key]
+    st.session_state.filtered_workbook = build_filtered_workbook(
+        list(st.session_state.records),
+        list(st.session_state.columns),
+        st.session_state.filter_sheets,
+        mode_obj,
+    )
+    if len(st.session_state.filter_sheets) == 1:
+        st.session_state.filtered_dl_name = f"{mode_obj.output_prefix}_{st.session_state.filter_sheets[0]['name']}_Filtered.xlsx"
+    else:
+        st.session_state.filtered_dl_name = f"{mode_obj.output_prefix}_Filtered_{len(st.session_state.filter_sheets)}_Sheets.xlsx"
+
+def _count_filtered_records(records, filters):
+    """Count records matching all filters (AND logic)."""
+    result = records
+    for col, fvs in filters.items():
+        allowed = {str(v).strip().upper() for v in fvs}
+        result = [r for r in result if str(r.get(col, "")).strip().upper() in allowed]
+    return len(result)
 
 col_a, col_b, col_c = st.columns([2, 4, 1])
 
@@ -424,13 +453,7 @@ if st.session_state.pending_filters:
         if st.button("Create Sheet", key="create_sheet_btn", use_container_width=True):
             import copy
             filters = copy.deepcopy(st.session_state.pending_filters)
-            count = len(st.session_state.records)
-            for fc, fvs in filters.items():
-                allowed_upper = {str(v).strip().upper() for v in fvs}
-                count = sum(
-                    1 for r in st.session_state.records
-                    if str(r.get(fc, "")).strip().upper() in allowed_upper
-                )
+            count = _count_filtered_records(st.session_state.records, filters)
             first_col = list(filters.keys())[0]
             first_vals = list(filters[first_col])
             val_label = "+".join(str(v)[:10] for v in first_vals[:3])
@@ -443,6 +466,7 @@ if st.session_state.pending_filters:
                 "name": sheet_name, "filters": filters, "count": count,
             })
             st.session_state.pending_filters = {}
+            _rebuild_filtered_workbook()
             st.rerun()
     with cc2:
         if st.button("Clear", key="clear_pending_btn", use_container_width=True):
@@ -480,36 +504,30 @@ if st.session_state.filter_sheets:
         with col:
             if st.button("Remove", key=f"rm_{i}", use_container_width=True):
                 st.session_state.filter_sheets.pop(i)
+                _rebuild_filtered_workbook()
                 st.rerun()
 
     st.markdown('<div class="section-sep"><span>Download Filtered</span></div>', unsafe_allow_html=True)
 
-    mode_obj = MODES[st.session_state.mode_key]
-    filtered_wb = build_filtered_workbook(
-        list(st.session_state.records),
-        list(st.session_state.columns),
-        st.session_state.filter_sheets,
-        mode_obj,
-    )
-    if len(st.session_state.filter_sheets) == 1:
-        dl_name = f"{mode_obj.output_prefix}_{st.session_state.filter_sheets[0]['name']}_Filtered.xlsx"
+    if st.session_state.filtered_workbook:
+        st.download_button(
+            label=f"Download Filtered Report ({len(st.session_state.filter_sheets)} sheets)",
+            data=st.session_state.filtered_workbook,
+            file_name=st.session_state.filtered_dl_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="filter_dl",
+        )
     else:
-        dl_name = f"{mode_obj.output_prefix}_Filtered_{len(st.session_state.filter_sheets)}_Sheets.xlsx"
-
-    st.download_button(
-        label=f"Download Filtered Report ({len(st.session_state.filter_sheets)} sheets)",
-        data=filtered_wb,
-        file_name=dl_name,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-        key="filter_dl",
-    )
+        st.info("Adding or removing sheets to rebuild...")
 
     col_clr1, col_clr2 = st.columns([4, 1])
     with col_clr2:
         if st.button("Clear All", key="clear_sheets"):
             st.session_state.filter_sheets = []
             st.session_state.pending_filters = {}
+            st.session_state.filtered_workbook = None
+            st.session_state.filtered_dl_name = ""
             st.rerun()
 else:
     st.info("Build filters above, then create sheets. Each sheet becomes a separate tab in the downloaded Excel file.")

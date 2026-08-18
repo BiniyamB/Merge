@@ -204,6 +204,7 @@ st.markdown("""
 for key, default in [
     ("merge_result", None), ("filter_sheets", []), ("unique_values", {}),
     ("records", []), ("columns", []), ("mode_key", None),
+    ("pending_filters", {}), ("pending_col", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -350,9 +351,18 @@ st.download_button(
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Filter Panel ─────────────────────────────────────────────────────────────
-st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-pink">&#9660;</div><div><p class="card-title">Filter & Export to Sheets</p><p class="card-sub">Each filter combination becomes a separate sheet in the downloaded Excel file</p></div></div>', unsafe_allow_html=True)
+st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-pink">&#9660;</div><div><p class="card-title">Filter & Export to Sheets</p><p class="card-sub">Build filters column by column, then create sheets. Each sheet becomes a separate tab in the Excel file.</p></div></div>', unsafe_allow_html=True)
 
-col_a, col_b, col_c = st.columns([2, 3, 1])
+# --- Step A: Build pending filters for the current sheet ---
+st.markdown('<p style="color:#c4b5fd;font-weight:700;font-size:0.85rem;margin:0 0 8px;">Build a sheet</p>', unsafe_allow_html=True)
+
+# Initialize pending filters
+if "pending_filters" not in st.session_state:
+    st.session_state.pending_filters = {}
+if "pending_col" not in st.session_state:
+    st.session_state.pending_col = None
+
+col_a, col_b, col_c = st.columns([2, 4, 1])
 
 with col_a:
     filter_col = st.selectbox(
@@ -365,50 +375,107 @@ with col_a:
 
 with col_b:
     if filter_col:
-        vals = ["(All \u2014 no filter)"] + st.session_state.unique_values.get(filter_col, [])
-        filter_val = st.selectbox("Value", options=vals, key="filter_val_select", index=0)
+        all_vals = st.session_state.unique_values.get(filter_col, [])
+        filter_vals = st.multiselect(
+            "Values (pick one or more)",
+            options=all_vals,
+            key="filter_vals_multi",
+            placeholder=f"Choose {filter_col} values...",
+        )
     else:
-        filter_val = st.selectbox(
-            "Value",
-            options=["Select a column first..."],
-            key="filter_val_select",
+        filter_vals = []
+        st.multiselect(
+            "Values",
+            options=["(Select a column first)"],
+            key="filter_vals_multi",
             disabled=True,
+            default=[],
         )
 
 with col_c:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    if st.button("+ Add Sheet", key="add_sheet_btn", disabled=not filter_col, use_container_width=True):
-        filters = {}
-        if filter_col and filter_val and filter_val != "(All \u2014 no filter)":
-            filters[filter_col] = filter_val
+    add_clicked = st.button(
+        "+ Add Filter",
+        key="add_filter_btn",
+        disabled=(not filter_col or not filter_vals),
+        use_container_width=True,
+    )
 
-        if not filters:
-            count = len(st.session_state.records)
-            name = "All"
-        else:
-            val_upper = str(list(filters.values())[0]).upper()
-            col_name = list(filters.keys())[0]
-            count = sum(
-                1 for r in st.session_state.records
-                if str(r.get(col_name, "")).upper() == val_upper
+# Handle add filter
+if add_clicked and filter_col and filter_vals:
+    st.session_state.pending_filters[filter_col] = filter_vals
+    st.rerun()
+
+# Show pending filters
+if st.session_state.pending_filters:
+    st.markdown('<p style="color:#5a6a9a;font-size:0.75rem;margin:8px 0 4px;font-weight:600;">Current sheet filters (AND between columns, OR within column):</p>', unsafe_allow_html=True)
+    for pcol, pvals in list(st.session_state.pending_filters.items()):
+        vals_display = ", ".join(pvals[:5])
+        if len(pvals) > 5:
+            vals_display += f" +{len(pvals)-5} more"
+        pcol1, pcol2 = st.columns([5, 1])
+        with pcol1:
+            st.markdown(
+                f'<div class="sheet-item">'
+                f'<span class="sheet-name">{pcol}</span>'
+                f'<span class="sheet-desc" style="margin-left:8px;">{vals_display}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
             )
-            val_short = filter_val[:15] + "..." if len(filter_val) > 15 else filter_val
-            name = f"{filter_col}_{val_short}"
+        with pcol2:
+            if st.button("Remove", key=f"rm_pending_{pcol}", use_container_width=True):
+                del st.session_state.pending_filters[pcol]
+                st.rerun()
 
-        key = str(filters)
-        if not any(str(s["filters"]) == key for s in st.session_state.filter_sheets):
-            st.session_state.filter_sheets.append({"name": name, "filters": filters, "count": count})
+    cc1, cc2 = st.columns([1, 1])
+    with cc1:
+        if st.button("Create Sheet", key="create_sheet_btn", use_container_width=True):
+            filters = dict(st.session_state.pending_filters)
+            # Compute count
+            count = len(st.session_state.records)
+            for fc, fvs in filters.items():
+                allowed = {v.upper() for v in fvs}
+                count = sum(
+                    1 for r in st.session_state.records
+                    if str(r.get(fc, "")).upper() in allowed
+                )
+            # Generate name from first filter
+            first_col = list(filters.keys())[0]
+            first_vals = list(filters[first_col])
+            val_label = "+".join(v[:10] for v in first_vals[:3])
+            if len(first_vals) > 3:
+                val_label += "+..."
+            sheet_name = f"{first_col}_{val_label}"
+            if len(filters) > 1:
+                sheet_name += f"+{len(filters)-1}col"
+
+            st.session_state.filter_sheets.append({
+                "name": sheet_name, "filters": filters, "count": count,
+            })
+            st.session_state.pending_filters = {}
             st.rerun()
-        else:
-            st.warning("This filter combination already exists.")
 
-# Display filter sheets
+    with cc2:
+        if st.button("Clear", key="clear_pending_btn", use_container_width=True):
+            st.session_state.pending_filters = {}
+            st.rerun()
+else:
+    st.markdown('<p style="color:#3a4570;font-size:0.8rem;font-style:italic;margin:8px 0 0;">Select a column and one or more values, then click "+ Add Filter". Add multiple columns for AND logic between them.</p>', unsafe_allow_html=True)
+
+# --- Step B: Display finalized sheets ---
 if st.session_state.filter_sheets:
+    st.markdown('<div class="section-sep"><span>Sheets</span></div>', unsafe_allow_html=True)
     for i, sheet in enumerate(st.session_state.filter_sheets):
-        if sheet["filters"]:
-            desc = ", ".join(f"<code>{k}</code> = <code>{v}</code>" for k, v in sheet["filters"].items())
-        else:
-            desc = "All rows (unfiltered)"
+        parts = []
+        for k, v in sheet["filters"].items():
+            if isinstance(v, (list, tuple, set)):
+                if len(v) <= 3:
+                    parts.append(f"<code>{k}</code> IN ({', '.join(f'<code>{vv}</code>' for vv in v)})")
+                else:
+                    parts.append(f"<code>{k}</code> IN ({', '.join(f'<code>{vv}</code>' for vv in list(v)[:3])}, +{len(v)-3})")
+            else:
+                parts.append(f"<code>{k}</code> = <code>{v}</code>")
+        desc = " AND ".join(parts) if parts else "All rows (unfiltered)"
         st.markdown(
             f'<div class="sheet-item">'
             f'<div class="sheet-num">{i+1}</div>'
@@ -419,7 +486,7 @@ if st.session_state.filter_sheets:
             unsafe_allow_html=True,
         )
 
-    # Remove buttons in a row
+    # Remove buttons
     rm_cols = st.columns(len(st.session_state.filter_sheets))
     for i, col in enumerate(rm_cols):
         with col:
@@ -459,9 +526,10 @@ if st.session_state.filter_sheets:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         if st.button("Clear All", key="clear_sheets", use_container_width=True):
             st.session_state.filter_sheets = []
+            st.session_state.pending_filters = {}
             st.rerun()
 else:
-    st.info("Use the dropdowns above to add filter sheets, then download a multi-sheet Excel file.")
+    st.info("Build filters above, then create sheets. Each sheet becomes a separate tab in the downloaded Excel file.")
 
 st.markdown('</div>', unsafe_allow_html=True)
 

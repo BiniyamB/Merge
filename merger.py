@@ -1085,9 +1085,10 @@ def build_filtered_workbook(
     """Build a workbook where each sheet is a filtered subset of *records*.
 
     ``sheet_defs`` is a list of dicts, each with:
-        {"name": "sheet_name", "filters": {"ISSUER": "Abay", ...}}
+        {"name": "sheet_name", "filters": {"ISSUER": ["Abay", "CBE"], "RESP_CODE": ["00"]}}
 
-    Every filter value is matched case-insensitively.  An empty filters dict
+    Filter values can be single strings or lists.  Within a column: OR.
+    Between columns: AND.  Empty filters dict = all rows.
     means "all rows" (unfiltered).  Sheet names are truncated to 31 chars
     (Excel limit) and sanitised.
     """
@@ -1137,7 +1138,10 @@ def _write_filtered_sheet_normal(ws, records, columns, filters, mode):
     b1.font = title_font
     b1.alignment = Alignment(horizontal="left", vertical="center")
 
-    filter_desc = ", ".join(f"{k}={v}" for k, v in filters.items()) if filters else "All"
+    filter_desc = ", ".join(
+        f"{k}={','.join(v) if isinstance(v, (list,tuple,set)) else v}"
+        for k, v in filters.items()
+    ) if filters else "All"
     ws.cell(row=2, column=1, value="Filter:").font = label_font
     ws.merge_cells("B2:C2")
     ws.cell(row=2, column=2, value=filter_desc).font = label_font
@@ -1181,15 +1185,25 @@ def _write_filtered_sheet_streaming(ws, records, columns, filters):
 
 
 def _apply_filters(records: list[dict], filters: dict) -> list[dict]:
-    """Filter records by exact match (case-insensitive) on each filter column."""
+    """Filter records by exact match (case-insensitive) on each filter column.
+
+    Each filter value can be a single string or a list of strings.
+    Within a column the logic is OR (match any of the values).
+    Between columns the logic is AND (match every column's filter).
+    """
     if not filters:
         return records
     result = records
-    for col, val in filters.items():
-        val_upper = str(val).strip().upper()
+    for col, vals in filters.items():
+        if isinstance(vals, (list, tuple, set)):
+            allowed = {str(v).strip().upper() for v in vals if v}
+        else:
+            allowed = {str(vals).strip().upper()}
+        if not allowed:
+            continue
         result = [
             r for r in result
-            if str(r.get(col, "")).strip().upper() == val_upper
+            if str(r.get(col, "")).strip().upper() in allowed
         ]
     return result
 

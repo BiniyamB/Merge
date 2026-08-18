@@ -351,16 +351,10 @@ st.download_button(
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Filter Panel ─────────────────────────────────────────────────────────────
-st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-pink">&#9660;</div><div><p class="card-title">Filter & Export to Sheets</p><p class="card-sub">Build filters column by column, then create sheets. Each sheet becomes a separate tab in the Excel file.</p></div></div>', unsafe_allow_html=True)
+st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-pink">&#9660;</div><div><p class="card-title">Filter & Export to Sheets</p><p class="card-sub">Build filters column by column, then create sheets. Each sheet becomes a separate tab in the downloaded Excel file.</p></div></div>', unsafe_allow_html=True)
 
-# --- Step A: Build pending filters for the current sheet ---
-st.markdown('<p style="color:#c4b5fd;font-weight:700;font-size:0.85rem;margin:0 0 8px;">Build a sheet</p>', unsafe_allow_html=True)
-
-# Initialize pending filters
 if "pending_filters" not in st.session_state:
     st.session_state.pending_filters = {}
-if "pending_col" not in st.session_state:
-    st.session_state.pending_col = None
 
 col_a, col_b, col_c = st.columns([2, 4, 1])
 
@@ -401,16 +395,14 @@ with col_c:
         use_container_width=True,
     )
 
-# Handle add filter
 if add_clicked and filter_col and filter_vals:
-    st.session_state.pending_filters[filter_col] = filter_vals
+    st.session_state.pending_filters[filter_col] = list(filter_vals)
     st.rerun()
 
-# Show pending filters
 if st.session_state.pending_filters:
     st.markdown('<p style="color:#5a6a9a;font-size:0.75rem;margin:8px 0 4px;font-weight:600;">Current sheet filters (AND between columns, OR within column):</p>', unsafe_allow_html=True)
     for pcol, pvals in list(st.session_state.pending_filters.items()):
-        vals_display = ", ".join(pvals[:5])
+        vals_display = ", ".join(str(v) for v in pvals[:5])
         if len(pvals) > 5:
             vals_display += f" +{len(pvals)-5} more"
         pcol1, pcol2 = st.columns([5, 1])
@@ -423,56 +415,53 @@ if st.session_state.pending_filters:
                 unsafe_allow_html=True,
             )
         with pcol2:
-            if st.button("Remove", key=f"rm_pending_{pcol}", use_container_width=True):
+            if st.button("X", key=f"rm_pending_{pcol}", use_container_width=True):
                 del st.session_state.pending_filters[pcol]
                 st.rerun()
 
     cc1, cc2 = st.columns([1, 1])
     with cc1:
         if st.button("Create Sheet", key="create_sheet_btn", use_container_width=True):
-            filters = dict(st.session_state.pending_filters)
-            # Compute count
+            import copy
+            filters = copy.deepcopy(st.session_state.pending_filters)
             count = len(st.session_state.records)
             for fc, fvs in filters.items():
-                allowed = {v.upper() for v in fvs}
+                allowed_upper = {str(v).strip().upper() for v in fvs}
                 count = sum(
                     1 for r in st.session_state.records
-                    if str(r.get(fc, "")).upper() in allowed
+                    if str(r.get(fc, "")).strip().upper() in allowed_upper
                 )
-            # Generate name from first filter
             first_col = list(filters.keys())[0]
             first_vals = list(filters[first_col])
-            val_label = "+".join(v[:10] for v in first_vals[:3])
+            val_label = "+".join(str(v)[:10] for v in first_vals[:3])
             if len(first_vals) > 3:
                 val_label += "+..."
             sheet_name = f"{first_col}_{val_label}"
             if len(filters) > 1:
                 sheet_name += f"+{len(filters)-1}col"
-
             st.session_state.filter_sheets.append({
                 "name": sheet_name, "filters": filters, "count": count,
             })
             st.session_state.pending_filters = {}
             st.rerun()
-
     with cc2:
         if st.button("Clear", key="clear_pending_btn", use_container_width=True):
             st.session_state.pending_filters = {}
             st.rerun()
 else:
-    st.markdown('<p style="color:#3a4570;font-size:0.8rem;font-style:italic;margin:8px 0 0;">Select a column and one or more values, then click "+ Add Filter". Add multiple columns for AND logic between them.</p>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#3a4570;font-size:0.8rem;font-style:italic;margin:8px 0 0;">Select a column + values, click "+ Add Filter". Add more columns for AND logic. Then "Create Sheet".</p>', unsafe_allow_html=True)
 
-# --- Step B: Display finalized sheets ---
 if st.session_state.filter_sheets:
     st.markdown('<div class="section-sep"><span>Sheets</span></div>', unsafe_allow_html=True)
     for i, sheet in enumerate(st.session_state.filter_sheets):
         parts = []
         for k, v in sheet["filters"].items():
             if isinstance(v, (list, tuple, set)):
-                if len(v) <= 3:
-                    parts.append(f"<code>{k}</code> IN ({', '.join(f'<code>{vv}</code>' for vv in v)})")
+                vs = list(v)
+                if len(vs) <= 3:
+                    parts.append(f"<code>{k}</code> IN ({', '.join(f'<code>{vv}</code>' for vv in vs)})")
                 else:
-                    parts.append(f"<code>{k}</code> IN ({', '.join(f'<code>{vv}</code>' for vv in list(v)[:3])}, +{len(v)-3})")
+                    parts.append(f"<code>{k}</code> IN ({', '.join(f'<code>{vv}</code>' for vv in vs[:3])}, +{len(vs)-3})")
             else:
                 parts.append(f"<code>{k}</code> = <code>{v}</code>")
         desc = " AND ".join(parts) if parts else "All rows (unfiltered)"
@@ -486,7 +475,6 @@ if st.session_state.filter_sheets:
             unsafe_allow_html=True,
         )
 
-    # Remove buttons
     rm_cols = st.columns(len(st.session_state.filter_sheets))
     for i, col in enumerate(rm_cols):
         with col:
@@ -494,37 +482,32 @@ if st.session_state.filter_sheets:
                 st.session_state.filter_sheets.pop(i)
                 st.rerun()
 
-    # Download filtered
     st.markdown('<div class="section-sep"><span>Download Filtered</span></div>', unsafe_allow_html=True)
-    col_dl, col_clr = st.columns([4, 1])
-    with col_dl:
-        try:
-            mode_obj = MODES[st.session_state.mode_key]
-            filtered_wb = build_filtered_workbook(
-                st.session_state.records,
-                st.session_state.columns,
-                st.session_state.filter_sheets,
-                mode_obj,
-            )
-            if len(st.session_state.filter_sheets) == 1:
-                dl_name = f"{mode_obj.output_prefix}_{st.session_state.filter_sheets[0]['name']}_Filtered.xlsx"
-            else:
-                dl_name = f"{mode_obj.output_prefix}_Filtered_{len(st.session_state.filter_sheets)}_Sheets.xlsx"
 
-            st.download_button(
-                label=f"Download Filtered Report ({len(st.session_state.filter_sheets)} sheets)",
-                data=filtered_wb,
-                file_name=dl_name,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="filter_dl",
-            )
-        except Exception as e:
-            st.error(f"Error: {e}")
+    mode_obj = MODES[st.session_state.mode_key]
+    filtered_wb = build_filtered_workbook(
+        list(st.session_state.records),
+        list(st.session_state.columns),
+        st.session_state.filter_sheets,
+        mode_obj,
+    )
+    if len(st.session_state.filter_sheets) == 1:
+        dl_name = f"{mode_obj.output_prefix}_{st.session_state.filter_sheets[0]['name']}_Filtered.xlsx"
+    else:
+        dl_name = f"{mode_obj.output_prefix}_Filtered_{len(st.session_state.filter_sheets)}_Sheets.xlsx"
 
-    with col_clr:
-        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        if st.button("Clear All", key="clear_sheets", use_container_width=True):
+    st.download_button(
+        label=f"Download Filtered Report ({len(st.session_state.filter_sheets)} sheets)",
+        data=filtered_wb,
+        file_name=dl_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        key="filter_dl",
+    )
+
+    col_clr1, col_clr2 = st.columns([4, 1])
+    with col_clr2:
+        if st.button("Clear All", key="clear_sheets"):
             st.session_state.filter_sheets = []
             st.session_state.pending_filters = {}
             st.rerun()

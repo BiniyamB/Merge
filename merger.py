@@ -808,7 +808,8 @@ class MergeResult:
     workbook_bytes: bytes
 
 
-def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline") -> MergeResult:
+def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
+                   skip_workbook: bool = False) -> MergeResult:
     """Merge any number of (filename, bytes) reports into one workbook.
 
     ``mode_key`` selects the report type: "pos_decline" (POS decline
@@ -816,6 +817,10 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline")
     format) or "atm" (ATM transaction reports). Files that fail to parse
     are reported per-file and skipped; the merge still succeeds as long as
     at least one file yields transactions.
+
+    ``skip_workbook`` when True skips the expensive workbook build (saves
+    significant memory for large files).  The caller can build the workbook
+    later via ``build_workbook(result.records, ...)``.
     """
     mode = MODES.get(mode_key)
     if mode is None:
@@ -928,7 +933,7 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline")
         warnings=warnings,
         mode_key=mode.key,
         mode_label=mode.label,
-        workbook_bytes=build_workbook(records, from_date, to_date, mode),
+        workbook_bytes=b"" if skip_workbook else build_workbook(records, from_date, to_date, mode),
     )
 
 

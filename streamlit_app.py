@@ -278,13 +278,23 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Merge ────────────────────────────────────────────────────────────────────
 if st.session_state.merged_meta is None:
+    total_size_mb = sum(f.size for f in uploaded_files) / (1024 * 1024)
+    if total_size_mb > 100:
+        st.warning(f"Large upload ({total_size_mb:.0f} MB total). Processing may take a while and could hit memory limits on free hosting.")
+
     if st.button("Merge Reports", use_container_width=True):
         with st.spinner("Merging reports..."):
-            payloads = [(f.name, f.getvalue()) for f in uploaded_files]
             try:
-                result = merge_reports(payloads, mode_key=mode_key)
+                payloads = [(f.name, f.getvalue()) for f in uploaded_files]
+                result = merge_reports(payloads, mode_key=mode_key, skip_workbook=True)
+            except MemoryError:
+                st.error("Not enough memory to process these files. Try uploading smaller files or fewer at a time.")
+                st.stop()
             except ValueError as e:
                 st.error(str(e))
+                st.stop()
+            except Exception as e:
+                st.error(f"Unexpected error during merge: {e}")
                 st.stop()
 
         st.session_state.records = result.records
@@ -303,7 +313,7 @@ if st.session_state.merged_meta is None:
             "mode_key": result.mode_key,
             "mode_label": result.mode_label,
         }
-        del result
+        del result, payloads
         gc.collect()
         st.rerun()
 

@@ -1,5 +1,8 @@
 """POS & ATM Report Merger -- Streamlit version."""
 
+import gc
+import io
+
 import streamlit as st
 import pandas as pd
 
@@ -10,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-from merger import MODES, merge_reports, build_filtered_workbook
+from merger import MODES, merge_reports, build_filtered_workbook, build_workbook
 
 # ── Global CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
@@ -202,9 +205,10 @@ st.markdown("""
 
 # ── State ────────────────────────────────────────────────────────────────────
 for key, default in [
-    ("merge_result", None), ("filter_sheets", []), ("unique_values", {}),
+    ("merged_meta", None), ("filter_sheets", []),
     ("records", []), ("columns", []), ("mode_key", None),
-    ("pending_filters", {}), ("pending_col", None),
+    ("pending_filters", {}),
+    ("unique_values_cache", {}),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -232,8 +236,12 @@ for i, opt in enumerate(mode_options):
     with cols[i]:
         if st.button(opt, key=f"mode_{i}", use_container_width=True):
             st.session_state.mode_key = mode_keys_map[opt]
-            st.session_state.merge_result = None
+            st.session_state.merged_meta = None
             st.session_state.filter_sheets = []
+            st.session_state.records = []
+            st.session_state.columns = []
+            st.session_state.unique_values_cache = {}
+            gc.collect()
 
 if st.session_state.mode_key is None:
     st.markdown('</div>', unsafe_allow_html=True)
@@ -269,7 +277,7 @@ for f in uploaded_files:
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Merge ────────────────────────────────────────────────────────────────────
-if st.session_state.merge_result is None:
+if st.session_state.merged_meta is None:
     if st.button("Merge Reports", use_container_width=True):
         with st.spinner("Merging reports..."):
             payloads = [(f.name, f.getvalue()) for f in uploaded_files]
@@ -279,76 +287,88 @@ if st.session_state.merge_result is None:
                 st.error(str(e))
                 st.stop()
 
-        st.session_state.merge_result = result
         st.session_state.records = result.records
         st.session_state.columns = list(result.records[0].keys()) if result.records else []
         st.session_state.filter_sheets = []
+        st.session_state.pending_filters = {}
 
-        unique_vals = {}
-        MAX_FILTER_VALUES = 500
-        for col in st.session_state.columns:
-            raw = {str(r.get(col, "")).strip() for r in result.records if r.get(col, "") not in ("", None)}
-            vals = sorted(raw)[:MAX_FILTER_VALUES]
-            unique_vals[col] = vals
-        st.session_state.unique_values = unique_vals
+        st.session_state.merged_meta = {
+            "filename": result.filename,
+            "from_date": result.from_date,
+            "to_date": result.to_date,
+            "total_rows": result.total_rows,
+            "per_file": result.per_file,
+            "resp_counts": result.resp_counts,
+            "warnings": result.warnings,
+            "mode_key": result.mode_key,
+            "mode_label": result.mode_label,
+        }
+        del result
+        gc.collect()
         st.rerun()
 
     st.stop()
 
 # ── Results ──────────────────────────────────────────────────────────────────
-result = st.session_state.merge_result
+meta = st.session_state.merged_meta
 
 st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-green">&#10003;</div><div><p class="card-title">Merged Report</p><p class="card-sub">All reports consolidated successfully</p></div></div>', unsafe_allow_html=True)
 
-# Stats
-ok_files = [p for p in result.per_file if p["status"] == "ok"]
+ok_files = [p for p in meta["per_file"] if p["status"] == "ok"]
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Transactions", f"{result.total_rows:,}")
-if result.from_date == result.to_date:
-    date_str = result.from_date
+c1.metric("Transactions", f"{meta['total_rows']:,}")
+if meta["from_date"] == meta["to_date"]:
+    date_str = meta["from_date"]
 else:
-    date_str = f"{result.from_date} \u2192 {result.to_date}"
+    date_str = f"{meta['from_date']} \u2192 {meta['to_date']}"
 c2.metric("Date Range", date_str)
 c3.metric("Files Merged", len(ok_files))
-c4.metric("Response Codes", len(result.resp_counts))
+c4.metric("Response Codes", len(meta["resp_counts"]))
 
-# Warnings
-if result.warnings:
-    with st.expander(f"Warnings ({len(result.warnings)})", expanded=False):
-        for w in result.warnings:
+if meta["warnings"]:
+    with st.expander(f"Warnings ({len(meta['warnings'])})", expanded=False):
+        for w in meta["warnings"]:
             st.warning(w)
 
-# Per-file details
 with st.expander("Files merged", expanded=False):
-    file_df = pd.DataFrame(result.per_file)
+    file_df = pd.DataFrame(meta["per_file"])
     st.dataframe(file_df, use_container_width=True, hide_index=True)
 
-# Response code chart
-if result.resp_counts:
+if meta["resp_counts"]:
     with st.expander("Response code distribution", expanded=False):
         resp_df = pd.DataFrame(
-            list(result.resp_counts.items()),
+            list(meta["resp_counts"].items()),
             columns=["Response Code", "Count"]
         ).sort_values("Count", ascending=False).head(15)
         st.bar_chart(resp_df.set_index("Response Code"))
 
-# Preview
-st.markdown(f'<div class="card-head"><div class="card-icon icon-blue">&#128269;</div><div><p class="card-title">Preview</p><p class="card-sub">First {min(len(result.records), 50)} of {result.total_rows:,} rows</p></div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="card-head"><div class="card-icon icon-blue">&#128269;</div><div><p class="card-title">Preview</p><p class="card-sub">First {min(len(st.session_state.records), 50)} of {meta["total_rows"]:,} rows</p></div></div>', unsafe_allow_html=True)
 preview_rows = []
-for row in result.records[:50]:
+for row in st.session_state.records[:50]:
     preview_rows.append({k: str(v) if v is not None and v != "" else "\u2014" for k, v in row.items()})
 preview_df = pd.DataFrame(preview_rows)
 st.dataframe(preview_df, use_container_width=True, hide_index=True, height=380)
 
-# Download merged
+# Download merged — generate workbook on demand (NOT stored in session state)
 st.markdown('<div class="section-sep"><span>Download</span></div>', unsafe_allow_html=True)
-st.download_button(
-    label="Download Merged Report",
-    data=result.workbook_bytes,
-    file_name=result.filename,
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    use_container_width=True,
-)
+if st.button("Download Merged Report", use_container_width=True, key="dl_merged"):
+    with st.spinner("Building workbook..."):
+        wb_bytes = build_workbook(
+            st.session_state.records,
+            meta["from_date"],
+            meta["to_date"],
+            MODES[meta["mode_key"]],
+        )
+    st.download_button(
+        label="Click to save",
+        data=wb_bytes,
+        file_name=meta["filename"],
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        key="dl_merged_actual",
+    )
+    del wb_bytes
+    gc.collect()
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -357,6 +377,21 @@ st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon
 
 if "pending_filters" not in st.session_state:
     st.session_state.pending_filters = {}
+
+MAX_FILTER_VALUES = 500
+
+def _get_col_values(col):
+    """Compute unique values for a column lazily and cache."""
+    if col in st.session_state.unique_values_cache:
+        return st.session_state.unique_values_cache[col]
+    raw = {
+        str(r.get(col, "")).strip()
+        for r in st.session_state.records
+        if r.get(col, "") not in ("", None)
+    }
+    vals = sorted(raw)[:MAX_FILTER_VALUES]
+    st.session_state.unique_values_cache[col] = vals
+    return vals
 
 def _count_filtered_records(records, filters):
     """Count records matching all filters (AND logic)."""
@@ -379,7 +414,7 @@ with col_a:
 
 with col_b:
     if filter_col:
-        all_vals = st.session_state.unique_values.get(filter_col, [])
+        all_vals = _get_col_values(filter_col)
         filter_vals = st.multiselect(
             "Values (pick one or more)",
             options=all_vals,
@@ -490,31 +525,35 @@ if st.session_state.filter_sheets:
 
     total_records = sum(s["count"] for s in st.session_state.filter_sheets)
     sheet_count = len(st.session_state.filter_sheets)
-    dl_key = f"filter_dl_{sheet_count}_{total_records}"
 
-    try:
-        mode_obj = MODES[st.session_state.mode_key]
-        filtered_wb = build_filtered_workbook(
-            list(st.session_state.records),
-            list(st.session_state.columns),
-            st.session_state.filter_sheets,
-            mode_obj,
-        )
+    if st.button(
+        f"Download Filtered Report ({sheet_count} sheets, {total_records:,} rows)",
+        use_container_width=True,
+        key=f"dl_filtered_{sheet_count}_{total_records}",
+    ):
+        with st.spinner("Building filtered workbook..."):
+            mode_obj = MODES[st.session_state.mode_key]
+            filtered_wb = build_filtered_workbook(
+                st.session_state.records,
+                st.session_state.columns,
+                st.session_state.filter_sheets,
+                mode_obj,
+            )
         if sheet_count == 1:
             dl_name = f"{mode_obj.output_prefix}_{st.session_state.filter_sheets[0]['name']}_Filtered.xlsx"
         else:
             dl_name = f"{mode_obj.output_prefix}_Filtered_{sheet_count}_Sheets.xlsx"
 
         st.download_button(
-            label=f"Download Filtered Report ({sheet_count} sheets, {total_records:,} rows)",
+            label="Click to save",
             data=filtered_wb,
             file_name=dl_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
-            key=dl_key,
+            key=f"dl_filtered_actual_{sheet_count}",
         )
-    except Exception as e:
-        st.error(f"Error building filtered file: {e}")
+        del filtered_wb
+        gc.collect()
 
     col_clr1, col_clr2 = st.columns([4, 1])
     with col_clr2:

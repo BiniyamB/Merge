@@ -418,6 +418,161 @@ def _normalize_time(value: Any) -> str:
     return f"{digits[0:2]}:{digits[2:4]}:{digits[4:6]}"
 
 
+_MONTH_NAMES = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _textual_date_to_ymd(s: str) -> tuple[int, int, int] | None:
+    """Parse a date written with a spelled-out month into (year, month, day).
+
+    Handles formats like '15-Aug-26', 'Aug 15, 2026', '13 Aug 2026',
+    '15 AUGUST 26', '15-August-2026', 'Aug 15 26', etc. The year may be
+    two digits (assumed to belong to the 2000s) or four digits. Returns
+    None if no spelled month is found or the parts do not make a date.
+    """
+    lower = s.lower()
+    month = None
+    month_name = None
+    for name, num in _MONTH_NAMES.items():
+        if name in lower:
+            month = num
+            month_name = name
+            break
+    if not month:
+        return None
+    rest = re.sub(r"[^a-z0-9]+", " ", lower)
+    tokens = [t for t in rest.split() if t]
+    # remove the (abbreviated or full) month token
+    tokens = [
+        t for t in tokens
+        if not (t.startswith(month_name) or month_name.startswith(t))
+    ]
+    nums = [int(t) for t in tokens if t.isdigit()]
+    if not nums:
+        return None
+    day = None
+    year = None
+    if len(nums) == 1:
+        n = nums[0]
+        if n > 31:
+            year = n
+        else:
+            day = n
+    else:
+        # two numbers: one is the day (<=31), the other the year
+        n1, n2 = nums[0], nums[1]
+        if n1 > 31:
+            year, day = n1, n2
+        elif n2 > 31 or n2 > 99:
+            day, year = n1, n2
+        else:
+            # both small: typical "15 Aug 26" -> first is day, second is year
+            day, year = n1, n2
+    if not day:
+        return None
+    if year is None:
+        year = 2000
+    if year < 100:
+        year += 2000
+    if 1 <= month <= 12 and 1 <= day <= 31:
+        return (year, month, day)
+    return None
+
+
+def smart_sort_key(value: Any) -> tuple:
+    """Build a comparable sort key for an arbitrary cell value.
+
+    Handles mixed representations so that a column containing dates written
+    with spelled months (e.g. '15-Aug-26', 'Aug 13, 2026'), numeric dates
+    (e.g. 20260813), times, numbers and plain text all sort correctly within
+    the same column. The returned tuple puts every value in the same
+    'namespace' so the ordering is stable and deterministic.
+    """
+    if _is_empty(value):
+        return (1, 0, "", "", 0)  # empty values always sort first
+
+    # datetime / date objects
+    if isinstance(value, datetime):
+        return (2, 0, "", value.isoformat(), 0)
+    if isinstance(value, date):
+        return (2, 0, "", value.isoformat(), 0)
+
+    s = str(value).strip()
+
+    # textual date with a spelled month (highest priority after objects)
+    ymd = _textual_date_to_ymd(s)
+    if ymd:
+        return (2, 0, "", f"{ymd[0]:04d}-{ymd[1]:02d}-{ymd[2]:02d}", 0)
+
+    # time-like values (contain ':' or look like raw HHMMSS)
+    if ":" in s:
+        t = _normalize_time(value)
+        if t:
+            return (3, 0, "", t, 0)
+
+    # 8-digit YYYYMMDD dates (numeric - e.g. 20260813) sort as dates, so they
+    # interleave correctly with dates written using spelled months.
+    if len(s) == 8 and s.isdigit():
+        return (2, 0, "", f"{s[0:4]}-{s[4:6]}-{s[6:8]}", 0)
+
+    # pure numbers
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return (4, float(value), "", "", 0)
+    num = re.fullmatch(r"[+-]?\d+(?:\.\d+)?", s)
+    if num:
+        return (4, float(s), "", "", 0)
+
+    # plain text
+    return (5, 0, "", s.lower(), 0)
+
+
+def sort_records(records: list[dict], column: str = "", descending: bool = False) -> list[dict]:
+    """Return *records* sorted by the given column using smart keys.
+
+    If ``column`` is empty/unknown the list is returned in its original
+    order. ``descending`` reverses the order (empty values keep sorting
+    first regardless, so blank rows stay at the top).
+    """
+    if not column:
+        return list(records)
+    ordered = sorted(records, key=lambda r: smart_sort_key(r.get(column)))
+    if descending:
+        # keep empty rows pinned to the front, reverse the rest
+        empty = [r for r in ordered if _is_empty(r.get(column))]
+        filled = [r for r in ordered if not _is_empty(r.get(column))]
+        filled.reverse()
+        ordered = empty + filled
+    return ordered
+
+
+def _reverse_date_time_sort(records: list[dict], mode: ReportMode) -> None:
+    """Reverse an existing date-then-time sorted list in place, keeping rows
+    with no date pinned to the front and preserving the original relative
+    order among undated rows."""
+    chunks: list[list] = []
+    current: list = []
+    for r in records:
+        if _is_empty(r.get(mode.date_column)):
+            if current:
+                chunks.append(current)
+                current = []
+            chunks.append([r])  # each undated row stays as its own unit
+        else:
+            current.append(r)
+    if current:
+        chunks.append(current)
+    new_records: list = []
+    for chunk in reversed(chunks):
+        if chunk and _is_empty(chunk[0].get(mode.date_column)):
+            new_records.extend(chunk)
+        else:
+            chunk.reverse()
+            new_records.extend(chunk)
+    records[:] = new_records
+
+
 def _detect_engine(data: bytes) -> str:
     """Pick the right pandas engine from the file signature."""
     if data[:2] == b"PK":  # xlsx / zip container
@@ -806,10 +961,13 @@ class MergeResult:
     mode_key: str
     mode_label: str
     workbook_bytes: bytes
+    sort_by: str = ""
+    sort_dir: str = "asc"
 
 
 def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
-                   skip_workbook: bool = False) -> MergeResult:
+                   skip_workbook: bool = False, sort_by: str = "",
+                   sort_dir: str = "asc") -> MergeResult:
     """Merge any number of (filename, bytes) reports into one workbook.
 
     ``mode_key`` selects the report type: "pos_decline" (POS decline
@@ -821,6 +979,15 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
     ``skip_workbook`` when True skips the expensive workbook build (saves
     significant memory for large files).  The caller can build the workbook
     later via ``build_workbook(result.records, ...)``.
+
+    ``sort_by`` / ``sort_dir`` control the ordering of the merged records.
+    ``sort_by`` may be any output column name (e.g. the date or time column,
+    an amount, a merchant name, ...) or "date" / "date_time" for the original
+    date-then-time ordering. ``sort_dir`` is "asc" or "desc". When ``sort_by``
+    is empty, the default date-then-time ordering is used. Values are never
+    altered - only an internal smart sort key is used, so dates written with
+    spelled months ('15-Aug-26') and numeric dates (20260813) sort together
+    correctly.
     """
     mode = MODES.get(mode_key)
     if mode is None:
@@ -845,17 +1012,26 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
             f"None of the uploaded files contained parseable {mode.label} transactions."
         )
 
-    # Sort by date, then time. Stored values are NEVER altered - only the
-    # internal sort key is normalized, so mixed raw formats (e.g. "115207"
-    # vs "01:20:54" or "0:0:20" vs "00:24:22") still order chronologically.
-    all_rows.sort(
-        key=lambda r: (
-            _normalize_date(r.get(mode.date_column)),
-            _normalize_time(r.get(mode.time_column)),
-        )
-    )
-
+    # Build the canonical records first (column order fixed, missing values
+    # filled with ''), then apply the requested sort. Stored values are NEVER
+    # altered - only the internal sort key is normalized, so mixed raw formats
+    # (e.g. "115207" vs "01:20:54" or dates spelled as 'Aug 13' vs numbers
+    # like 20260813) still order correctly.
     records = [{col: rec.get(col, "") for col in mode.canonical_columns} for rec in all_rows]
+
+    if sort_by in ("", "date_time", "date"):
+        # default: sort by date (spelled months or numbers), then time
+        records.sort(
+            key=lambda r: (
+                smart_sort_key(r.get(mode.date_column)),
+                _normalize_time(r.get(mode.time_column)),
+            )
+        )
+        if sort_dir == "desc":
+            _reverse_date_time_sort(records, mode)
+    elif sort_by in mode.canonical_columns:
+        records = sort_records(records, sort_by, descending=(sort_dir == "desc"))
+    # unknown sort column -> leave in source order
 
     dates = sorted(
         {
@@ -934,6 +1110,8 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
         mode_key=mode.key,
         mode_label=mode.label,
         workbook_bytes=b"" if skip_workbook else build_workbook(records, from_date, to_date, mode),
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
 
 

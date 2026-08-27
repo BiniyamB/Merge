@@ -21,6 +21,7 @@ from merger import (
     build_workbook,
     merge_reports,
     parse_report,
+    smart_sort_key,
 )
 
 
@@ -945,3 +946,89 @@ def test_real_pos_success_files():
     df = pd.read_excel(io.BytesIO(result.workbook_bytes), header=3, engine="openpyxl")
     assert df.shape == (result.total_rows, len(POS_SUCCESS_CANONICAL_COLUMNS))
     assert list(df.columns) == list(POS_SUCCESS_CANONICAL_COLUMNS)
+
+
+# ---------------------------------------------------------------------------
+# Smart sorting (dates written with spelled months vs numbers, etc.)
+# ---------------------------------------------------------------------------
+def test_smart_sort_key_mixed_dates():
+    # spelled-month dates and an 8-digit numeric date all land in the same
+    # date "namespace" so they interleave chronologically.
+    assert smart_sort_key("15-Aug-26")[0] == 2
+    assert smart_sort_key("Aug 13, 2026")[0] == 2
+    assert smart_sort_key("20260813")[0] == 2
+    # the same actual date yields the same key regardless of representation
+    assert smart_sort_key("20260813") == smart_sort_key("13 Aug 2026")
+    assert smart_sort_key("Aug 13, 2026") == smart_sort_key("20260813")
+
+
+def test_smart_sort_text_and_numbers_mixed():
+    # numeric values sort numerically and group before plain text; empties
+    # always sort first
+    keys = sorted(["B", "A", "10", "", "2"], key=smart_sort_key)
+    assert keys == ["", "2", "10", "A", "B"]
+    # raw numbers (not strings) sort numerically too
+    keys2 = sorted([10, 2, "", 1.5], key=smart_sort_key)
+    assert keys2 == ["", 1.5, 2, 10]
+
+
+def test_merge_sort_by_amount_desc():
+    result = merge_reports(
+        [("export.xlsx", _xlsx_export_style()), ("decline42.xlsx", _xls_report_style())],
+        sort_by="AMOUNT",
+        sort_dir="desc",
+    )
+    assert result.sort_by == "AMOUNT"
+    assert result.sort_dir == "desc"
+    amounts = [r["AMOUNT"] for r in result.records if r["AMOUNT"] != ""]
+    assert amounts == sorted(amounts, reverse=True)
+
+
+def test_merge_sort_does_not_alter_values():
+    result = merge_reports(
+        [("export.xlsx", _xlsx_export_style()), ("decline42.xlsx", _xls_report_style())],
+        sort_by="TIME",
+        sort_dir="asc",
+    )
+    # TIME values are untouched even though sorting used an internal key
+    times = [r["TIME"] for r in result.records]
+    assert all(isinstance(t, (int, str)) for t in times)
+    assert 115207 in times
+
+
+def test_merge_default_sort_is_date_then_time():
+    result = merge_reports([("export.xlsx", _xlsx_export_style())])
+    # no sort_by requested -> default date+time ordering preserved
+    times = [r["TIME"] for r in result.records]
+    keys = [_normalize_time(t) for t in times]
+    assert keys == sorted(keys)
+
+
+def test_merge_sort_empty_column_pinned_front_when_descending():
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["ACQUIRER", "ISSUER", "PAN", "TRAN_DATE", "TIME", "TRANS_TYPE",
+               "AMOUNT", "RESP", "REVERSAL", "FE_UTRNNO", "REFNUM", "ADDRESS_NAME"])
+    ws.append(["A", "I", "1", 20260813, "10:00:00", "Purchase", 5, 901, 0,
+               "260813000000000000", "1", "M1"])
+    ws.append(["B", "I", "2", 20260813, "11:00:00", "Purchase", 20, 901, 0,
+               "260813000000000001", "2", "M2"])
+    buf1 = io.BytesIO()
+    wb.save(buf1)
+    wb2 = Workbook()
+    ws2 = wb2.active
+    ws2.append(["ACQUIRER", "ISSUER", "PAN", "TRAN_DATE", "TIME", "TRANS_TYPE",
+                "AMOUNT", "RESP", "REVERSAL", "FE_UTRNNO", "REFNUM", "ADDRESS_NAME"])
+    ws2.append(["C", "I", "3", 20260813, "12:00:00", "Purchase", "", 901, 0,
+                "260813000000000002", "3", "M3"])  # empty AMOUNT
+    buf2 = io.BytesIO()
+    wb2.save(buf2)
+
+    result = merge_reports([("a.xlsx", buf1.getvalue()), ("b.xlsx", buf2.getvalue())],
+                           sort_by="AMOUNT", sort_dir="desc")
+    # empty AMOUNT sorts first (pinned to the front), the rest descend
+    assert result.records[0]["ACQUIRER"] == "C"
+    assert result.records[0]["AMOUNT"] == ""
+    assert result.records[1]["AMOUNT"] == 20
+    assert result.records[2]["AMOUNT"] == 5
+

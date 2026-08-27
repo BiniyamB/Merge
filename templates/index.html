@@ -164,6 +164,22 @@
 
       <ul class="file-list" id="file-list"></ul>
 
+      <div class="sort-row" id="sort-row">
+        <div class="sort-group">
+          <label class="filter-label" for="sort-col">Sort by</label>
+          <select class="filter-select" id="sort-col">
+            <option value="date_time">Date &middot; Time (default)</option>
+          </select>
+        </div>
+        <div class="sort-group">
+          <label class="filter-label" for="sort-dir">Direction</label>
+          <select class="filter-select" id="sort-dir">
+            <option value="asc">Ascending</option>
+            <option value="desc">Descending</option>
+          </select>
+        </div>
+      </div>
+
       <div class="actions">
         <button class="btn btn-merge" id="merge-btn" disabled>
           <span class="btn-shine"></span>

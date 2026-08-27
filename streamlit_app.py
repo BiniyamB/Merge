@@ -282,11 +282,29 @@ if st.session_state.merged_meta is None:
     if total_size_mb > 100:
         st.warning(f"Large upload ({total_size_mb:.0f} MB total). Processing may take a while and could hit memory limits on free hosting.")
 
+    # Sort options - dates written with spelled months (Aug, Jul...) and
+    # numbers (20260813) are handled automatically by the smart sort key.
+    sort_by = st.selectbox(
+        "Sort by",
+        options=["date_time"] + list(mode.canonical_columns),
+        format_func=lambda c: "Date \u00b7 Time (default)" if c == "date_time" else c,
+        help="Choose which column to order the merged report by. Dates written with "
+             "spelled-out months (e.g. 15-Aug-26) and numbers (20260813) are sorted together.",
+    )
+    sort_dir = st.radio("Direction", ["asc", "desc"], horizontal=True,
+                        format_func=lambda d: "Ascending" if d == "asc" else "Descending")
+
     if st.button("Merge Reports", use_container_width=True):
         with st.spinner("Merging reports..."):
             try:
                 payloads = [(f.name, f.getvalue()) for f in uploaded_files]
-                result = merge_reports(payloads, mode_key=mode_key, skip_workbook=True)
+                result = merge_reports(
+                    payloads,
+                    mode_key=mode_key,
+                    skip_workbook=True,
+                    sort_by=sort_by,
+                    sort_dir=sort_dir,
+                )
             except MemoryError:
                 st.error("Not enough memory to process these files. Try uploading smaller files or fewer at a time.")
                 st.stop()
@@ -312,6 +330,8 @@ if st.session_state.merged_meta is None:
             "warnings": result.warnings,
             "mode_key": result.mode_key,
             "mode_label": result.mode_label,
+            "sort_by": result.sort_by,
+            "sort_dir": result.sort_dir,
         }
         del result, payloads
         gc.collect()
@@ -334,6 +354,16 @@ else:
 c2.metric("Date Range", date_str)
 c3.metric("Files Merged", len(ok_files))
 c4.metric("Response Codes", len(meta["resp_counts"]))
+
+_sort_by = meta.get("sort_by") or "date_time"
+if _sort_by == "date_time":
+    sort_desc = "Date \u00b7 Time (default)"
+else:
+    sort_desc = _sort_by
+_sort_dir = meta.get("sort_dir") or "asc"
+st.caption(
+    f"Sorted by: **{sort_desc}** ({'descending' if _sort_dir == 'desc' else 'ascending'})"
+)
 
 if meta["warnings"]:
     with st.expander(f"Warnings ({len(meta['warnings'])})", expanded=False):

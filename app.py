@@ -44,6 +44,11 @@ def merge():
     if mode_key not in MODES:
         return jsonify({"error": f"Unknown report mode '{mode_key}'."}), 400
 
+    sort_by = request.form.get("sort_by", "")
+    sort_dir = request.form.get("sort_dir", "asc")
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "asc"
+
     uploads = [f for f in request.files.getlist("files") if f and f.filename]
     if not uploads:
         return jsonify({"error": "No files were uploaded."}), 400
@@ -60,7 +65,12 @@ def merge():
         payloads.append((f.filename, data))
 
     try:
-        result: MergeResult = merge_reports(payloads, mode_key=mode_key)
+        result: MergeResult = merge_reports(
+            payloads,
+            mode_key=mode_key,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+        )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -101,6 +111,8 @@ def merge():
             "unique_values": unique_values,
             "resp_counts": result.resp_counts,
             "warnings": result.warnings,
+            "sort_by": result.sort_by,
+            "sort_dir": result.sort_dir,
         }
     )
 

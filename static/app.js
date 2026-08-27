@@ -102,18 +102,22 @@ const MODE_INFO = {
   pos_decline: {
     label: "POS Decline",
     subtitle: "Drop one or more <code>.xls</code> / <code>.xlsx</code> POS decline reports, or click to browse.",
+    columns: ["ACQUIRER","ISSUER","PAN","TRAN_DATE","TIME","TRANS_TYPE","AMOUNT","RESP_CODE","Reversal","FE UTRNNO","REFNUM","MERCHANT"],
   },
   pos_success: {
     label: "POS Success",
     subtitle: "Drop one or more <code>.xls</code> / <code>.xlsx</code> POS success reports, or click to browse.",
+    columns: ["ACQUIRER","ISSUER","PAN","TRAN_DATE","TIME","TRANS_TYPE","AMOUNT","RESP_CODE","REFNUM","UTRNNO","MERCHANT"],
   },
   pos: {
     label: "POS",
     subtitle: "Drop one or more <code>.xls</code> / <code>.xlsx</code> POS transaction reports, or click to browse.",
+    columns: ["ACQUIRER","ISSUER","CARD_NUMBER","TRANS_DATE","TRANS_TIME","TRANS_TYPE","AMOUNT","CURRENCY","RESP","RRN","TERMINAL_ID","ADDRESS"],
   },
   atm: {
     label: "ATM",
     subtitle: "Drop one or more <code>.xls</code> / <code>.xlsx</code> ATM transaction reports, or click to browse.",
+    columns: ["ACQUIRER","ISSUER","CARD_NUMBER","TRANS_DATE","TRANS_TIME","TRANS_TYPE","AMOUNT","CURRENCY","RESP","RRN","UTRNNO","TERMINAL_ID","ADDRESS_NAME"],
   },
 };
 
@@ -157,11 +161,28 @@ function resetToPicker() {
   $("mode-card").classList.remove("hidden");
 }
 
+function populateSortColumns(mode) {
+  const sortCol = $("sort-col");
+  sortCol.innerHTML = "";
+  const def = document.createElement("option");
+  def.value = "date_time";
+  def.textContent = "Date \u00b7 Time (default)";
+  sortCol.appendChild(def);
+  const cols = (MODE_INFO[mode] && MODE_INFO[mode].columns) || [];
+  for (const col of cols) {
+    const opt = document.createElement("option");
+    opt.value = col;
+    opt.textContent = col;
+    sortCol.appendChild(opt);
+  }
+}
+
 function selectMode(mode) {
   state.mode = mode;
   state.files = [];
   state.result = null;
   renderFileList();
+  populateSortColumns(mode);
   setBreadcrumbs([MODE_INFO[mode].label]);
   errorBanner.classList.add("hidden");
   $("warn-banner").classList.add("hidden");
@@ -289,6 +310,8 @@ async function merge() {
   const formData = new FormData();
   state.files.forEach((f) => formData.append("files", f, f.name));
   formData.append("mode", state.mode);
+  formData.append("sort_by", $("sort-col").value || "date_time");
+  formData.append("sort_dir", $("sort-dir").value || "asc");
 
   try {
     const res = await fetch("/merge", { method: "POST", body: formData });
@@ -319,12 +342,18 @@ function el(tag, cls, text) {
 }
 
 function renderResults(data) {
+  const sortLabel = (data.sort_by && data.sort_by !== "date_time")
+    ? ` \u00b7 sorted by ${data.sort_by} (${data.sort_dir === "desc" ? "desc" : "asc"})`
+    : (data.sort_dir === "desc" ? " \u00b7 sorted by date & time (desc)" : "");
   $("result-subtitle").textContent =
     `${data.per_file.filter((p) => p.status === "ok").length} file(s) merged \u00b7 ` +
-    `${data.total_rows.toLocaleString()} transactions \u00b7 ${data.from_date} \u2192 ${data.to_date}`;
+    `${data.total_rows.toLocaleString()} transactions \u00b7 ${data.from_date} \u2192 ${data.to_date}` +
+    sortLabel;
   renderWarnings(data.warnings);
   renderStats(data);
   renderFilesTable(data.per_file);
+  previewSort.col = "";
+  previewSort.dir = "asc";
   renderPreview(data);
   renderChart(data.resp_counts);
   const dl = $("download-btn");
@@ -399,12 +428,31 @@ function renderPreview(data) {
   table.innerHTML = "";
   const thead = document.createElement("thead");
   const hr = document.createElement("tr");
-  for (const h of data.columns) hr.appendChild(el("th", null, h));
+  for (const h of data.columns) {
+    const th = el("th", "preview-sortable", h);
+    th.title = "Click to sort preview";
+    th.dataset.col = h;
+    if (previewSort.col === h) {
+      th.classList.add("preview-sorted");
+      th.appendChild(el("span", "preview-sort-arrow", previewSort.dir === "desc" ? " \u25bc" : " \u25b2"));
+    }
+    th.addEventListener("click", () => togglePreviewSort(h, data.columns));
+    hr.appendChild(th);
+  }
   thead.appendChild(hr);
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
-  for (const row of data.preview) {
+  let rows = data.preview;
+  if (previewSort.col) {
+    rows = rows.slice().sort((a, b) => {
+      const av = a[previewSort.col];
+      const bv = b[previewSort.col];
+      const cmp = smartPreviewCompare(av, bv);
+      return previewSort.dir === "desc" ? -cmp : cmp;
+    });
+  }
+  for (const row of rows) {
     const tr = document.createElement("tr");
     for (const col of data.columns) {
       const v = row[col];
@@ -413,6 +461,34 @@ function renderPreview(data) {
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
+}
+
+const previewSort = { col: "", dir: "asc" };
+
+function togglePreviewSort(col, columns) {
+  if (previewSort.col === col) {
+    previewSort.dir = previewSort.dir === "asc" ? "desc" : "asc";
+  } else {
+    previewSort.col = col;
+    previewSort.dir = "asc";
+  }
+  if (state.result) renderPreview(state.result);
+}
+
+function smartPreviewCompare(a, b) {
+  const ae = a === "" || a === null || a === undefined;
+  const be = b === "" || b === null || b === undefined;
+  if (ae && be) return 0;
+  if (ae) return -1;
+  if (be) return 1;
+  const sa = String(a).trim();
+  const sb = String(b).trim();
+  const na = Number(sa);
+  const nb = Number(sb);
+  if (sa !== "" && sb !== "" && !isNaN(na) && !isNaN(nb) && /^[+-]?\d+(\.\d+)?$/.test(sa) && /^[+-]?\d+(\.\d+)?$/.test(sb)) {
+    return na - nb;
+  }
+  return sa.localeCompare(sb, undefined, { numeric: true, sensitivity: "base" });
 }
 
 function renderWarnings(warnings) {

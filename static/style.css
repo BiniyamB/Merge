@@ -725,6 +725,24 @@ code {
 .data-table tbody tr { transition: background 0.2s; }
 .data-table tbody tr:hover { background: rgba(168, 85, 247, 0.04); }
 
+.data-table th.preview-sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s, background 0.2s;
+}
+.data-table th.preview-sortable:hover {
+  color: var(--purple);
+  background: rgba(168, 85, 247, 0.18);
+}
+.data-table th.preview-sorted {
+  color: var(--cyan);
+  background: rgba(0, 212, 255, 0.12);
+}
+.preview-sort-arrow {
+  font-size: 0.6rem;
+  color: var(--cyan);
+}
+
 /* ---------- badges ---------- */
 .badge-ok, .badge-err, .badge-warn {
   display: inline-block;
@@ -952,6 +970,24 @@ footer {
   display: flex;
   align-items: center;
   font-variant-numeric: tabular-nums;
+}
+
+.sort-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 18px 0 4px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sort-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+  flex: 1;
 }
 
 .btn-add-sheet {

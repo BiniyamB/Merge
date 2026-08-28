@@ -13,6 +13,8 @@ from merger import (
     POS_MODE,
     POS_SUCCESS_CANONICAL_COLUMNS,
     POS_SUCCESS_MODE,
+    QR_CANONICAL_COLUMNS,
+    QR_MODE,
     REPORT_TITLE,
     SHEET_NAME,
     _normalize_time,
@@ -1031,4 +1033,164 @@ def test_merge_sort_empty_column_pinned_front_when_descending():
     assert result.records[0]["AMOUNT"] == ""
     assert result.records[1]["AMOUNT"] == 20
     assert result.records[2]["AMOUNT"] == 5
+
+
+# ---------------------------------------------------------------------------
+# QR mode (transfer-export / "July - December 2025 Source" EXPORT_TABLE)
+# ---------------------------------------------------------------------------
+def _qr_export_style() -> bytes:
+    """Mimic the EXPORT_TABLE structure from 'July - December 2025 Source':
+    DESTINATION_BANK, SOURCE_BANK, TRX_DATE, DBTR_ACCT, CDTR_ACCT, AMOUNT,
+    TX_ID, STATUS - header in row 1."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Report"
+    ws.append(["DESTINATION_BANK", "SOURCE_BANK", "TRX_DATE", "DBTR_ACCT",
+               "CDTR_ACCT", "AMOUNT", "TX_ID", "STATUS"])
+    ws.append(["Awash Bank", "Cooperative Bank of Oromia", 20250707,
+               "251915180606", "014251099975200", 77600,
+               "CBORETAA1455091289", "PROCESSED"])
+    ws.append(["Amhara Bank S.C", "Cooperative Bank of Oromia", 20250707,
+               "251913230123", "01425166631800", 100000,
+               "CBORETAA1455204002", "DECLINED"])
+    ws.append(["Dashen Bank S.c", "Cooperative Bank of Oromia", 20251222,
+               "251940966729", "01425597396100", 23000,
+               "CBORETAA1913344123", "PROCESSED"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_parse_qr_export_style():
+    rep = parse_report(_qr_export_style(), "qr_source.xlsx", mode=QR_MODE)
+    assert rep.data_rows == 3
+    assert rep.blank_columns == []
+    assert rep.columns_kept == list(QR_CANONICAL_COLUMNS)
+    assert rep.order_mismatch is False
+
+    row = rep.rows[0]
+    assert row["DESTINATION_BANK"] == "Awash Bank"
+    assert row["SOURCE_BANK"] == "Cooperative Bank of Oromia"
+    assert row["TRX_DATE"] == 20250707
+    assert row["DBTR_ACCT"] == "251915180606"
+    assert row["CDTR_ACCT"] == "014251099975200"
+    assert row["AMOUNT"] == 77600
+    assert row["TX_ID"] == "CBORETAA1455091289"
+    assert row["STATUS"] == "PROCESSED"
+
+
+def test_parse_qr_emphasizes_header_variants():
+    """A QR export using descriptive header names still maps to canonical."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Destination Bank", "Sending Bank", "Transaction Date", "Debit Acct",
+               "Credit Acct", "Amount", "Transaction ID", "Transaction Status"])
+    ws.append(["Awash Bank", "Cooperative Bank of Oromia", "07-Jul-25",
+               "251915180606", "014251099975200", 77600, "TXN1", "PROCESSED"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    rep = parse_report(buf.getvalue(), "qr_variants.xlsx", mode=QR_MODE)
+    assert rep.data_rows == 1
+    assert rep.columns_kept == list(QR_CANONICAL_COLUMNS)
+    row = rep.rows[0]
+    assert row["DESTINATION_BANK"] == "Awash Bank"
+    assert row["SOURCE_BANK"] == "Cooperative Bank of Oromia"
+    assert row["TRX_DATE"] == "07-Jul-25"  # raw value untouched
+    assert row["DBTR_ACCT"] == "251915180606"
+    assert row["CDTR_ACCT"] == "014251099975200"
+    assert row["TX_ID"] == "TXN1"
+    assert row["STATUS"] == "PROCESSED"
+
+
+def test_merge_qr_reports():
+    result = merge_reports([("qr_source.xlsx", _qr_export_style())], mode_key="qr")
+    assert result.total_rows == 3
+    assert result.mode_key == "qr"
+    assert result.filename == (
+        "QR_Export_07_Jul_25_to_22_Dec_25_Merged.xlsx"
+    )
+    assert result.from_date == "20250707"
+    assert result.to_date == "20251222"
+    for rec in result.records:
+        assert list(rec.keys()) == list(QR_CANONICAL_COLUMNS)
+    # default sort is by date; dates are 07-Jul and 22-Dec (ascending)
+    dates = [_normalize_time(r["TRX_DATE"]) for r in result.records]
+    assert dates == sorted(dates)
+    assert result.resp_counts == {"PROCESSED": 2, "DECLINED": 1}
+
+
+def test_merge_qr_smart_sort_date_spelled_and_numeric():
+    """Two QR files whose TRX_DATE is written with a spelled month rather
+    than a number must still interleave chronologically."""
+    def qr_with_date(day, status="PROCESSED"):
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["DESTINATION_BANK", "SOURCE_BANK", "TRX_DATE", "DBTR_ACCT",
+                   "CDTR_ACCT", "AMOUNT", "TX_ID", "STATUS"])
+        ws.append(["Awash Bank", "Coop Bank", day, "A", "B", 100, f"T-{day}", status])
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
+    result = merge_reports(
+        [
+            ("a.xlsx", qr_with_date("15-Aug-26")),
+            ("b.xlsx", qr_with_date(20260813)),
+        ],
+        mode_key="qr",
+    )
+    assert result.total_rows == 2
+    assert result.records[0]["TRX_DATE"] == 20260813  # Aug 13 before Aug 15
+    assert result.records[1]["TRX_DATE"] == "15-Aug-26"
+
+
+def test_merge_qr_sort_by_amount_desc():
+    result = merge_reports(
+        [("qr_source.xlsx", _qr_export_style())], mode_key="qr",
+        sort_by="AMOUNT", sort_dir="desc",
+    )
+    assert result.sort_by == "AMOUNT"
+    assert result.sort_dir == "desc"
+    amounts = [r["AMOUNT"] for r in result.records if r["AMOUNT"] != ""]
+    assert amounts == sorted(amounts, reverse=True)
+
+
+def test_merge_qr_sort_by_status():
+    result = merge_reports(
+        [("qr_source.xlsx", _qr_export_style())], mode_key="qr",
+        sort_by="STATUS", sort_dir="asc",
+    )
+    statuses = [r["STATUS"] for r in result.records]
+    assert statuses == sorted(statuses)
+
+
+def test_qr_workbook_layout():
+    result = merge_reports([("qr_source.xlsx", _qr_export_style())], mode_key="qr")
+    wb = load_workbook(io.BytesIO(result.workbook_bytes))
+    assert wb.sheetnames == ["Report"]
+    ws = wb["Report"]
+    header = [ws.cell(row=1, column=c).value
+              for c in range(1, len(QR_CANONICAL_COLUMNS) + 1)]
+    assert header == list(QR_CANONICAL_COLUMNS)
+    assert ws.cell(row=1, column=9).value is None  # nothing beyond col H
+    # data starts at row 2, sorted by date
+    assert ws.cell(row=2, column=3).value in (20250707, "20250707", 20250707)
+    assert ws.cell(row=2, column=8).value in ("PROCESSED", "DECLINED")
+
+
+def test_qr_rejects_file_without_qr_headers():
+    """A POS-style file (ACQUIRER header) is not treated as QR input."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["ACQUIRER", "ISSUER", "PAN", "TRAN_DATE", "TIME", "TRANS_TYPE",
+               "AMOUNT", "RESP", "REVERSAL", "FE_UTRNNO", "REFNUM", "ADDRESS_NAME"])
+    ws.append(["Bank A", "Bank B", "1111*****2222", 20260813, "10:00:00",
+               "Purchase", 100, 901, 0, 123456, "REF-1", "M1"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    with pytest.raises(ValueError, match="No QR table found"):
+        parse_report(buf.getvalue(), "pos_in_qr_mode.xlsx", mode=QR_MODE)
+
 

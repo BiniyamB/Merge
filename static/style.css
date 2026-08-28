@@ -376,6 +376,12 @@ code {
 .mo-atm:hover .mode-icon { box-shadow: 0 6px 28px rgba(255, 140, 50, 0.45); transform: scale(1.08); }
 .mo-atm .mode-tag { background: rgba(255, 140, 50, 0.1); color: #ffb86c; border: 1px solid rgba(255, 140, 50, 0.2); }
 
+.mo-qr .mo-glow { background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(43, 134, 197, 0.05)); }
+.mo-qr:hover { border-color: rgba(0, 212, 255, 0.3); box-shadow: 0 8px 40px rgba(0, 212, 255, 0.12); }
+.mo-qr .mode-icon { background: linear-gradient(135deg, #00d4ff, #2b86c5); box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3); }
+.mo-qr:hover .mode-icon { box-shadow: 0 6px 28px rgba(0, 212, 255, 0.45); transform: scale(1.08); }
+.mo-qr .mode-tag { background: rgba(0, 212, 255, 0.1); color: #8be4ff; border: 1px solid rgba(0, 212, 255, 0.2); }
+
 .mode-icon {
   display: grid;
   place-items: center;

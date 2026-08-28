@@ -268,3 +268,65 @@ def test_merge_pos_success_multiple_files(client):
     )
     assert resp.status_code == 200
     assert resp.get_json()["total_rows"] == 2
+
+
+QR_COLUMNS = ["DESTINATION_BANK", "SOURCE_BANK", "TRX_DATE", "DBTR_ACCT",
+              "CDTR_ACCT", "AMOUNT", "TX_ID", "STATUS"]
+
+
+def _make_qr_xlsx(filename: str = "qr.xlsx") -> tuple[str, bytes]:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Report"
+    ws.append(["DESTINATION_BANK", "SOURCE_BANK", "TRX_DATE", "DBTR_ACCT",
+               "CDTR_ACCT", "AMOUNT", "TX_ID", "STATUS"])
+    ws.append(["Awash Bank", "Cooperative Bank of Oromia", 20250707,
+               "251915180606", "014251099975200", 77600,
+               "CBORETAA1455091289", "PROCESSED"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return filename, buf.getvalue()
+
+
+def test_index_page_offers_qr_mode(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert b'data-mode="qr"' in resp.data
+    assert b">QR</span>" in resp.data
+
+
+def test_merge_qr_mode(client):
+    filename, data = _make_qr_xlsx()
+    resp = client.post(
+        "/merge",
+        data={"files": (io.BytesIO(data), filename), "mode": "qr"},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["mode"] == "qr"
+    assert payload["columns"] == QR_COLUMNS
+    assert payload["total_rows"] == 1
+    assert payload["filename"].startswith("QR_Export")
+    assert payload["resp_counts"] == {"PROCESSED": 1}
+    dl = client.get(f"/download/{payload['token']}")
+    assert dl.status_code == 200
+    assert dl.data[:2] == b"PK"
+
+
+def test_merge_qr_mode_sort(client):
+    filename, data = _make_qr_xlsx()
+    resp = client.post(
+        "/merge",
+        data={
+            "files": (io.BytesIO(data), filename),
+            "mode": "qr",
+            "sort_by": "AMOUNT",
+            "sort_dir": "desc",
+        },
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["sort_by"] == "AMOUNT"
+    assert payload["sort_dir"] == "desc"

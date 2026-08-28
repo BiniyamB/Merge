@@ -7,7 +7,7 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(
-    page_title="POS & ATM Report Merger",
+    page_title="Report Merger (POS, ATM & QR)",
     page_icon="",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -214,23 +214,24 @@ for key, default in [
         st.session_state[key] = default
 
 # ── Header ───────────────────────────────────────────────────────────────────
-st.markdown('<p class="gradient-title">POS & ATM Report Merger</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Consolidate POS & ATM transaction reports &mdash; in memory, nothing saved to disk.</p>', unsafe_allow_html=True)
+st.markdown('<p class="gradient-title">Report Merger</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Consolidate POS, ATM &amp; QR transaction reports &mdash; in memory, nothing saved to disk.</p>', unsafe_allow_html=True)
 
 # ── Mode Selection ───────────────────────────────────────────────────────────
 st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-purple">1</div><div><p class="card-title">Choose report type</p><p class="card-sub">Select the type of reports you want to merge</p></div></div>', unsafe_allow_html=True)
 
-mode_options = ["POS Decline", "POS Success", "POS (Daily)", "ATM (Daily)"]
+mode_options = ["POS Decline", "POS Success", "POS (Daily)", "ATM (Daily)", "QR"]
 mode_keys_map = {
     "POS Decline": "pos_decline", "POS Success": "pos_success",
-    "POS (Daily)": "pos", "ATM (Daily)": "atm",
+    "POS (Daily)": "pos", "ATM (Daily)": "atm", "QR": "qr",
 }
 mode_colors = {
     "POS Decline": "badge-red", "POS Success": "badge-green",
     "POS (Daily)": "badge-purple", "ATM (Daily)": "badge-blue",
+    "QR": "badge-blue",
 }
 
-cols = st.columns(4)
+cols = st.columns(len(mode_options))
 selected = None
 for i, opt in enumerate(mode_options):
     with cols[i]:

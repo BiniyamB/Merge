@@ -119,6 +119,11 @@ const MODE_INFO = {
     subtitle: "Drop one or more <code>.xls</code> / <code>.xlsx</code> ATM transaction reports, or click to browse.",
     columns: ["ACQUIRER","ISSUER","CARD_NUMBER","TRANS_DATE","TRANS_TIME","TRANS_TYPE","AMOUNT","CURRENCY","RESP","RRN","UTRNNO","TERMINAL_ID","ADDRESS_NAME"],
   },
+  qr: {
+    label: "QR",
+    subtitle: "Drop one or more <code>.xls</code> / <code>.xlsx</code> QR transfer-export reports, or click to browse.",
+    columns: ["DESTINATION_BANK","SOURCE_BANK","TRX_DATE","DBTR_ACCT","CDTR_ACCT","AMOUNT","TX_ID","STATUS"],
+  },
 };
 
 /* ------------------------------------------------------------------ */

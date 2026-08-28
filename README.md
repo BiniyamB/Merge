@@ -1,15 +1,17 @@
-# POS & ATM Report Merger
+# POS & ATM & QR Report Merger
 
 A small web dashboard that merges **any number of Excel reports** into
-**one clean Excel report**, in four modes:
+**one clean Excel report**, in five modes:
 
 - **POS Decline** → merged in the `POS_Transaction_Decline_Report` layout
 - **POS Success** → merged in the `POS_Transaction_SVFE_Report` layout
 - **POS** → merged in the `Daily_Tranaction_Report_SmartVista_POS` layout
 - **ATM** → merged in the `Daily_Tranaction_Report_SmartVista_ATM` layout
+- **QR** → transfer exports merged in the `QR_Export` layout (the
+  `EXPORT_TABLE` structure of the "July - December 2025 Source" report)
 
 When you open the app it first asks which type of report you want to merge
-(a **POS Decline**, **POS Success**, **POS** or **ATM** button); the whole workflow — upload,
+(a **POS Decline**, **POS Success**, **POS**, **ATM** or **QR** button); the whole workflow — upload,
 blank-column removal, header/reshuffle checks, missing/extra-column
 warnings, preview and download — then runs in that mode. A breadcrumb bar
 (`Home › POS Decline` …) lets you jump back to the mode picker at any time.
@@ -32,11 +34,12 @@ merged result**:
 
 ## Features
 
-- On opening, a mode picker asks for **POS Decline**, **POS Success**, **POS** or **ATM**
+- On opening, a mode picker asks for **POS Decline**, **POS Success**, **POS**, **ATM** or **QR**
   reports; a breadcrumb bar (Home > mode > results) lets you go back to the
   picker
 - Drag & drop any number of `.xls` / `.xlsx` reports (or browse for them)
-- Automatically detects the report table (a sheet with an `ACQUIRER` header)
+- Automatically detects the report table (a sheet with an `ACQUIRER` header,
+  or — in QR mode — a `DESTINATION_BANK` / `SOURCE_BANK` / `TRX_DATE` header)
   and skips title rows, repeated page-break headers, and empty rows
 - Removes blank/spacer columns (e.g. the empty columns B, D, F in the
   `POS_Transaction_Decline_Report` format)
@@ -51,6 +54,8 @@ merged result**:
   - ATM: `ACQUIRER, ISSUER, CARD_NUMBER, TRANS_DATE, TRANS_TIME,
     TRANS_TYPE, AMOUNT, CURRENCY, RESP, RRN, UTRNNO, TERMINAL_ID,
     ADDRESS_NAME`
+  - QR: `DESTINATION_BANK, SOURCE_BANK, TRX_DATE, DBTR_ACCT, CDTR_ACCT,
+    AMOUNT, TX_ID, STATUS`
 - **Handles reshuffled columns**: a report whose columns are in a different
   order (e.g. `UTRNNO` before `RRN`, or `TIME` instead of `TRANS_TIME`)
   still merges into the standard layout. The dashboard flags such files with
@@ -74,19 +79,21 @@ merged result**:
   and a preview of the merged table, with one-click download of the merged
   `.xlsx`
 
-## POS and ATM modes
+## POS, ATM and QR modes
 
-POS and ATM modes merge transaction reports into the SmartVista daily
-report layout:
+POS, ATM and QR modes merge reports into the SmartVista/daily (plain
+tabular) layout:
 
 - sheet name `Report`, **header in row 1** (no title block), plain sheet —
   exactly like the sample daily reports (no fills, borders, column widths
   or frozen panes)
 - header variants are matched by name (`TIME` → `TRANS_TIME`,
   `ADDRESS_NAME` → `ADDRESS`, `UTRNNO`/`FE UTRNNO` → `UTRNNO`, `PAN` →
-  `CARD_NUMBER`, …)
+  `CARD_NUMBER`, and in QR mode `Destination Bank` → `DESTINATION_BANK`,
+  `Debit Acct` → `DBTR_ACCT`, `Transaction ID` → `TX_ID`, …)
 - output filename follows the source convention, e.g.
   `Daily_Tranaction_Report_SmartVista_ATM_15_Aug_26_to_15_Aug_26_Merged.xlsx`
+  or `QR_Export_07_Jul_25_to_22_Dec_25_Merged.xlsx`
 
 ## Run it
 
@@ -171,6 +178,13 @@ Row 5+: transaction rows (sorted by date, then time)
 ```
 Row 1:  ACQUIRER | ISSUER | CARD_NUMBER | TRANS_DATE | TRANS_TIME | TRANS_TYPE | AMOUNT | CURRENCY | RESP | RRN | [UTRNNO] | TERMINAL_ID | ADDRESS[_NAME]
 Row 2+: transaction rows (sorted by date, then time)
+```
+
+### QR (transfer-export layout)
+
+```
+Row 1:  DESTINATION_BANK | SOURCE_BANK | TRX_DATE | DBTR_ACCT | CDTR_ACCT | AMOUNT | TX_ID | STATUS
+Row 2+: transaction rows (sorted by date)
 ```
 
 ## Tests

@@ -196,6 +196,70 @@ ATM_HEADER_ALIASES = {
     "MERCHANT NAME": "ADDRESS_NAME",
 }
 
+# QR transfer/export mode -> EXPORT_TABLE format ("July - December 2025
+# Source"). The columns come straight from the interbank transfer export:
+# DESTINATION_BANK, SOURCE_BANK, TRX_DATE, DBTR_ACCT (debtor account),
+# CDTR_ACCT (creditor account), AMOUNT, TX_ID (transaction id) and STATUS.
+QR_CANONICAL_COLUMNS = (
+    "DESTINATION_BANK", "SOURCE_BANK", "TRX_DATE", "DBTR_ACCT",
+    "CDTR_ACCT", "AMOUNT", "TX_ID", "STATUS",
+)
+
+QR_HEADER_ALIASES = {
+    "DESTINATION_BANK": "DESTINATION_BANK",
+    "DESTINATION BANK": "DESTINATION_BANK",
+    "DEST BANK": "DESTINATION_BANK",
+    "RECEIVER BANK": "DESTINATION_BANK",
+    "BENEFICIARY BANK": "DESTINATION_BANK",
+    "SOURCE_BANK": "SOURCE_BANK",
+    "SOURCE BANK": "SOURCE_BANK",
+    "SENDING BANK": "SOURCE_BANK",
+    "ORIGINATOR BANK": "SOURCE_BANK",
+    "TRX_DATE": "TRX_DATE",
+    "TRX DATE": "TRX_DATE",
+    "TRANSACTION DATE": "TRX_DATE",
+    "TRANS DATE": "TRX_DATE",
+    "TRAN DATE": "TRX_DATE",
+    "TRANS_DATE": "TRX_DATE",
+    "TRAN_DATE": "TRX_DATE",
+    "DATE": "TRX_DATE",
+    "DBTR_ACCT": "DBTR_ACCT",
+    "DBTR ACCT": "DBTR_ACCT",
+    "DEBTOR ACCOUNT": "DBTR_ACCT",
+    "DEBTOR ACCT": "DBTR_ACCT",
+    "DEBIT ACCOUNT": "DBTR_ACCT",
+    "DEBIT ACCT": "DBTR_ACCT",
+    "SENDER ACCOUNT": "DBTR_ACCT",
+    "SENDER ACCT": "DBTR_ACCT",
+    "FROM ACCOUNT": "DBTR_ACCT",
+    "CDTR_ACCT": "CDTR_ACCT",
+    "CDTR ACCT": "CDTR_ACCT",
+    "CREDITOR ACCOUNT": "CDTR_ACCT",
+    "CREDITOR ACCT": "CDTR_ACCT",
+    "CREDIT ACCOUNT": "CDTR_ACCT",
+    "CREDIT ACCT": "CDTR_ACCT",
+    "RECEIVER ACCOUNT": "CDTR_ACCT",
+    "RECEIVER ACCT": "CDTR_ACCT",
+    "TO ACCOUNT": "CDTR_ACCT",
+    "AMOUNT": "AMOUNT",
+    "TRANSACTION AMOUNT": "AMOUNT",
+    "TX AMOUNT": "AMOUNT",
+    "AMOUNT (ETB)": "AMOUNT",
+    "AMOUNT - ETB": "AMOUNT",
+    "TX_ID": "TX_ID",
+    "TX ID": "TX_ID",
+    "TRANSACTION ID": "TX_ID",
+    "TRANSACTION REFERENCE": "TX_ID",
+    "TRANSACTION REF": "TX_ID",
+    "TX REF": "TX_ID",
+    "REFERENCE": "TX_ID",
+    "TRANSACTION NO": "TX_ID",
+    "STATUS": "STATUS",
+    "TRANSACTION STATUS": "STATUS",
+    "TX STATUS": "STATUS",
+    "RESPONSE": "STATUS",
+}
+
 # Backward-compatible names (POS decline mode defaults)
 CANONICAL_COLUMNS = list(POS_DECLINE_CANONICAL_COLUMNS)
 HEADER_ALIASES = dict(POS_DECLINE_HEADER_ALIASES)
@@ -329,7 +393,40 @@ ATM_MODE = ReportMode(
     always_show_range=True,
 )
 
-MODES = {"pos_decline": POS_DECLINE_MODE, "pos_success": POS_SUCCESS_MODE, "pos": POS_MODE, "atm": ATM_MODE}
+# QR transfer-export mode -> "July - December 2025 Source" EXPORT_TABLE
+# format. It is a plain tabular export (header in row 1, no title block),
+# so it uses the streaming (SmartVista-style) writer. The whole transaction
+# date+time lives in TRX_DATE, so date-then-time ordering collapses to a
+# date sort and STATUS ("PROCESSED"/"DECLINED") drives the distribution.
+QR_MODE = ReportMode(
+    key="qr",
+    label="QR",
+    canonical_columns=QR_CANONICAL_COLUMNS,
+    header_aliases=QR_HEADER_ALIASES,
+    sheet_name="Report",
+    report_title=None,
+    output_prefix="QR_Export",
+    sample_label="QR_Export",
+    title_rows=0,
+    column_widths={
+        "A": 22, "B": 24, "C": 16, "D": 20, "E": 20,
+        "F": 12, "G": 24, "H": 12,
+    },
+    numeric_fmt_cols=(),
+    resp_column="STATUS",
+    date_column="TRX_DATE",
+    time_column="TRX_DATE",
+    file_date=_atm_file_date,
+    always_show_range=True,
+)
+
+MODES = {
+    "pos_decline": POS_DECLINE_MODE,
+    "pos_success": POS_SUCCESS_MODE,
+    "pos": POS_MODE,
+    "atm": ATM_MODE,
+    "qr": QR_MODE,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -585,12 +682,38 @@ def _detect_engine(data: bytes) -> str:
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
-def _is_header_row(row) -> bool:
-    """A header row is any row containing a cell that reads 'ACQUIRER'."""
+def _header_markers(mode: ReportMode) -> set[str]:
+    """The distinctive header cell(s) that mark a header row for a mode.
+
+    POS-family reports always carry an 'ACQUIRER' header; QR transfer
+    exports carry 'DESTINATION_BANK' (and SOURCE_BANK / TRX_DATE). A header
+    row is recognized when any of its cells matches one of these tokens.
+    """
+    if mode is not None and mode.key == "qr":
+        return {"DESTINATION_BANK", "SOURCE_BANK", "TRX_DATE"}
+    return {"ACQUIRER"}
+
+
+def _is_header_row(row, mode: ReportMode | None = None) -> bool:
+    """A header row is any row containing a distinctive header cell for the
+    mode (e.g. 'ACQUIRER' for POS-family, 'DESTINATION_BANK' for QR)."""
+    if mode is not None and mode.key == "qr":
+        # QR exports may spell headers descriptively ("Destination Bank",
+        # "Debit Acct", "Transaction ID", ...), so a row counts as a header
+        # when several of its cells map by name to canonical QR columns.
+        mapped = 0
+        for v in row:
+            if _is_empty(v):
+                continue
+            canon = mode.header_aliases.get(str(v).strip().upper())
+            if canon and canon in mode.canonical_columns:
+                mapped += 1
+        return mapped >= 3
+    markers = _header_markers(mode)
     for v in row:
         if _is_empty(v):
             continue
-        if str(v).strip().upper() == "ACQUIRER":
+        if str(v).strip().upper() in markers:
             return True
     return False
 
@@ -842,7 +965,7 @@ def parse_report(file_bytes: bytes, filename: str,
         ncols = max(len(row) for row in grid)
         grid = [row + [None] * (ncols - len(row)) for row in grid]
 
-        header_rows = [i for i, row in enumerate(grid) if _is_header_row(row)]
+        header_rows = [i for i, row in enumerate(grid) if _is_header_row(row, mode)]
         if not header_rows:
             continue
         header_idx = header_rows[0]
@@ -939,9 +1062,10 @@ def parse_report(file_bytes: bytes, filename: str,
                 report.warnings.append(f"other sheets ignored: {', '.join(others)}")
         return report
 
+    markers = ", ".join(sorted(_header_markers(mode)))
     raise ValueError(
-        f"No POS decline table found in '{filename}': "
-        "no sheet has a header row containing 'ACQUIRER'."
+        f"No {mode.label} table found in '{filename}': "
+        f"no sheet has a header row containing one of: {markers}."
     )
 
 
@@ -971,10 +1095,11 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
     """Merge any number of (filename, bytes) reports into one workbook.
 
     ``mode_key`` selects the report type: "pos_decline" (POS decline
-    reports), "pos" (POS transaction reports -> SmartVista daily POS
-    format) or "atm" (ATM transaction reports). Files that fail to parse
-    are reported per-file and skipped; the merge still succeeds as long as
-    at least one file yields transactions.
+    reports), "pos_success" (POS success reports -> SVFE format),
+    "pos" (POS transaction reports -> SmartVista daily POS format),
+    "atm" (ATM transaction reports) or "qr" (QR transfer-export reports).
+    Files that fail to parse are reported per-file and skipped; the merge
+    still succeeds as long as at least one file yields transactions.
 
     ``skip_workbook`` when True skips the expensive workbook build (saves
     significant memory for large files).  The caller can build the workbook

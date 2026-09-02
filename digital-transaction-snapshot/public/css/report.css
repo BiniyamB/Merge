@@ -1,0 +1,575 @@
+/* ============================================
+   DIGITAL TRANSACTION VALUE SNAPSHOT - STYLES
+   ============================================ */
+
+:root {
+  --navy-900: #0B2A5B;
+  --navy-800: #142750;
+  --navy-700: #1e3a6b;
+  --navy-600: #2d5190;
+  --navy-500: #416eb4;
+  --navy-100: #d9e2f0;
+  --navy-50: #f0f4fa;
+  --brand-500: #F4511E;
+  --brand-400: #ff6b36;
+  --brand-100: #ffe4d4;
+  --brand-50: #fff3ed;
+  --orange-light: #FFF3E0;
+  --report-bg: #ffffff;
+  --report-width: 1038px;
+  --report-height: 735px;
+}
+
+/* ---- FORM ---- */
+.form-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+.form-body.open {
+  max-height: 5000px;
+}
+
+/* ---- REPORT CONTAINER ---- */
+.report-container {
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px 48px;
+}
+
+.report-landscape {
+  width: var(--report-width);
+  height: var(--report-height);
+  background: var(--report-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(11, 42, 91, 0.12), 0 1px 4px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+}
+
+/* ---- HEADER ---- */
+.report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, var(--navy-900) 0%, var(--navy-700) 100%);
+  color: white;
+  min-height: 62px;
+}
+
+.header-left { display: flex; align-items: center; }
+.header-center { flex: 1; text-align: center; padding: 0 16px; }
+.header-right { display: flex; align-items: center; }
+
+.org-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.org-icon {
+  width: 36px;
+  height: 36px;
+  background: rgba(255,255,255,0.15);
+  border: 1.5px solid rgba(255,255,255,0.3);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: white;
+}
+.org-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.org-sub {
+  font-size: 8px;
+  color: rgba(255,255,255,0.6);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.brand-badge {
+  display: inline-block;
+  background: var(--brand-500);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  padding: 2px 12px;
+  border-radius: 3px;
+  margin-bottom: 4px;
+}
+
+.report-title {
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.report-subtitle {
+  font-size: 9px;
+  color: rgba(255,255,255,0.65);
+  margin: 2px 0 0;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.date-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.date-label {
+  font-size: 7px;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.date-value {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: rgba(255,255,255,0.1);
+  padding: 2px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+/* ---- TABLE ---- */
+.report-table-wrapper {
+  flex: 1;
+  overflow: hidden;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.report-table thead tr {
+  background: var(--navy-900);
+  color: white;
+}
+
+.report-table th {
+  padding: 7px 12px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.th-service { width: 22%; }
+.th-volume { width: 20%; text-align: right; }
+.th-value { width: 22%; text-align: right; }
+.th-avg { width: 22%; text-align: right; }
+.th-message { width: 14%; text-align: left; }
+
+.report-table td {
+  padding: 14px 12px;
+  vertical-align: middle;
+  border-bottom: 1px solid #f0f0f0;
+  height: 84px;
+}
+
+.report-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.report-table tbody tr:nth-child(even) {
+  background: #fafbfc;
+}
+
+.report-table tbody tr.highlight-row {
+  background: var(--orange-light) !important;
+}
+
+.report-table tbody tr.highlight-row td {
+  border-bottom-color: #ffe0cc;
+}
+
+/* Service cell */
+.svc-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.svc-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.svc-icon.financial {
+  background: var(--navy-100);
+  color: var(--navy-900);
+}
+
+.svc-icon.non-financial {
+  background: #e8eaed;
+  color: #5f6368;
+}
+
+.svc-icon svg, .svc-icon i {
+  width: 14px;
+  height: 14px;
+}
+
+.svc-name {
+  font-weight: 700;
+  color: var(--navy-900);
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+  line-height: 1.2;
+}
+
+.highlight-row .svc-name {
+  color: var(--brand-500);
+}
+
+/* Numeric cells */
+.num-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.num-primary {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--navy-900);
+  line-height: 1.2;
+}
+
+.highlight-row .num-primary {
+  color: var(--brand-500);
+}
+
+.num-dash {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Metric bar */
+.metric-bar-wrap {
+  margin-top: 3px;
+}
+
+.metric-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--navy-100);
+  overflow: hidden;
+}
+
+.metric-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--navy-500);
+  transition: width 0.4s ease;
+}
+
+.highlight-row .metric-bar-fill {
+  background: var(--brand-500);
+}
+
+/* Key message */
+.msg-cell {
+  font-size: 9.5px;
+  color: #6b7280;
+  line-height: 1.3;
+}
+
+.msg-cell.msg-highlight {
+  color: var(--brand-500);
+  font-weight: 600;
+}
+
+.msg-badge {
+  display: inline-block;
+  background: var(--brand-500);
+  color: white;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.msg-badge svg {
+  width: 9px;
+  height: 9px;
+  vertical-align: -1px;
+  margin-right: 2px;
+}
+
+/* ---- INSIGHT CARDS ---- */
+.report-insights {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1fr;
+  gap: 0;
+  border-top: 2px solid var(--navy-900);
+}
+
+.insight-card {
+  padding: 10px 14px;
+  border-right: 1px solid #e5e7eb;
+}
+
+.insight-card:last-child {
+  border-right: none;
+}
+
+.insight-label {
+  font-size: 7.5px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--navy-900);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+/* Volume Leader */
+.insight-service {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--navy-900);
+  margin-bottom: 2px;
+}
+
+.insight-detail {
+  font-size: 9px;
+  color: #6b7280;
+  line-height: 1.35;
+}
+
+/* QR Advantage */
+.qr-avg-main {
+  text-align: center;
+  padding: 4px 0 6px;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 6px;
+}
+
+.qr-avg-label {
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #9ca3af;
+  text-transform: uppercase;
+}
+
+.qr-avg-value {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--brand-500);
+  line-height: 1.3;
+}
+
+.qr-avg-sub {
+  font-size: 8px;
+  color: #9ca3af;
+}
+
+.qr-comparisons {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.qr-comp {
+  text-align: center;
+}
+
+.qr-comp-multiplier {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--navy-900);
+  line-height: 1.2;
+}
+
+.qr-comp-label {
+  font-size: 7px;
+  color: #9ca3af;
+  line-height: 1.2;
+}
+
+/* Takeaway */
+.takeaway-text {
+  font-size: 9.5px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+/* ---- FOOTER ---- */
+.report-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  background: var(--navy-900);
+  color: white;
+  min-height: 34px;
+}
+
+.footer-org-name {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.footer-tagline {
+  font-size: 8px;
+  color: rgba(255,255,255,0.55);
+  margin-left: 8px;
+  font-style: italic;
+}
+
+.footer-web {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  color: rgba(255,255,255,0.7);
+}
+
+.footer-web svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ---- VALIDATION ---- */
+.validation-msg {
+  display: block;
+  margin-top: 2px;
+}
+
+.input-error {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+}
+
+/* ---- RESPONSIVE ---- */
+@media (max-width: 1100px) {
+  .report-container {
+    overflow-x: auto;
+    justify-content: flex-start;
+    padding: 16px 8px 40px;
+  }
+}
+
+@media (max-width: 768px) {
+  .report-landscape {
+    transform: scale(0.55);
+    transform-origin: top left;
+  }
+  .report-container {
+    min-height: 500px;
+  }
+}
+
+/* ---- PRINT ---- */
+@media print {
+  .print-hide, nav, .print-hide * {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  .report-container {
+    padding: 0;
+    display: flex;
+    justify-content: center;
+  }
+
+  .report-landscape {
+    box-shadow: none;
+    border: none;
+    page-break-inside: avoid;
+    width: 100%;
+    max-width: 100%;
+    height: 735px;
+  }
+
+  @page {
+    size: landscape;
+    margin: 0.3in;
+  }
+}
+
+/* ---- EXPORT STATE ---- */
+.exporting .report-landscape {
+  box-shadow: none;
+  border: none;
+  transform: none !important;
+  overflow: visible;
+}
+
+body.export-standalone #print-area {
+  width: 1038px;
+  height: 735px;
+  overflow: hidden;
+  margin: 0 auto;
+}
+
+body.export-standalone .report-landscape {
+  transform: none !important;
+  width: 1038px;
+  height: 735px;
+}
+
+/* ---- LOADING OVERLAY ---- */
+.export-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.export-overlay-inner {
+  background: white;
+  border-radius: 12px;
+  padding: 24px 32px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.export-overlay-inner .spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e5e7eb;
+  border-top-color: var(--brand-500);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 12px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

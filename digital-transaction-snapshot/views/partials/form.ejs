@@ -1,0 +1,217 @@
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8" id="config-form-wrapper">
+  <div class="bg-navy-900 text-white px-6 py-4 flex items-center justify-between cursor-pointer" onclick="toggleFormSection()">
+    <div class="flex items-center gap-3">
+      <i data-lucide="settings-2" class="w-5 h-5 text-brand-400"></i>
+      <h2 class="font-semibold text-lg">Report Configuration</h2>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-navy-300" id="form-status">Ready</span>
+      <i data-lucide="chevron-down" class="w-5 h-5 transition-transform" id="form-chevron"></i>
+    </div>
+  </div>
+
+  <div class="form-body" id="form-body">
+    <div class="p-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Report Information -->
+        <div>
+          <h3 class="text-sm font-bold text-navy-800 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <i data-lucide="file-text" class="w-4 h-4 text-brand-500"></i>
+            Report Information
+          </h3>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Report Title</label>
+              <input type="text" id="report-title" value="<%= data.report.title %>"
+                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Organization</label>
+                <input type="text" id="report-org" value="<%= data.report.organization %>"
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Brand</label>
+                <input type="text" id="report-brand" value="<%= data.report.brand %>"
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Tagline 1</label>
+                <input type="text" id="report-tagline1" value="<%= data.report.tagline1 %>"
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Tagline 2</label>
+                <input type="text" id="report-tagline2" value="<%= data.report.tagline2 %>"
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Subtitle</label>
+                <input type="text" id="report-subtitle" value="<%= data.report.subtitle %>"
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Report Date</label>
+                <input type="text" id="report-date" value="<%= data.report.date %>"
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div>
+          <h3 class="text-sm font-bold text-navy-800 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <i data-lucide="zap" class="w-4 h-4 text-brand-500"></i>
+            Actions
+          </h3>
+          <div class="space-y-3">
+            <button onclick="updatePreview()" class="w-full flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 text-white font-semibold py-3 px-4 rounded-lg transition shadow-sm">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+              Update Preview
+            </button>
+            <div class="grid grid-cols-2 gap-3">
+              <button onclick="resetToDefaults()" class="flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2.5 px-3 rounded-lg transition text-sm">
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                Reset
+              </button>
+              <button onclick="printReport()" class="flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-900 text-white font-medium py-2.5 px-3 rounded-lg transition text-sm">
+                <i data-lucide="printer" class="w-4 h-4"></i>
+                Print
+              </button>
+              <button onclick="downloadPDF()" class="flex items-center justify-center gap-2 bg-navy-700 hover:bg-navy-800 text-white font-medium py-2.5 px-3 rounded-lg transition text-sm">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                Download PDF
+              </button>
+              <button onclick="exportImage()" class="flex items-center justify-center gap-2 bg-navy-600 hover:bg-navy-700 text-white font-medium py-2.5 px-3 rounded-lg transition text-sm">
+                <i data-lucide="image" class="w-4 h-4"></i>
+                Export Image
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Service Data -->
+      <div class="mt-8">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-bold text-navy-800 uppercase tracking-wider flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4 text-brand-500"></i>
+            Service Data
+          </h3>
+          <button onclick="addService()" class="flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 transition">
+            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+            Add Service
+          </button>
+        </div>
+
+        <div id="services-container" class="space-y-4">
+          <% data.services.forEach(function(service, index) { %>
+          <div class="service-card border border-gray-200 rounded-lg p-4 bg-gray-50 hover:bg-white transition" data-index="<%= index %>" data-id="<%= service.id %>">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-navy-700 bg-navy-100 px-2 py-0.5 rounded">#<%= index + 1 %></span>
+                <input type="text" value="<%= service.name %>" data-field="name"
+                  class="text-sm font-bold text-navy-900 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-brand-500 focus:ring-0 px-1 py-0.5 transition">
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="flex items-center gap-1.5 text-xs text-gray-500">
+                  <input type="checkbox" data-field="highlighted" <%= service.highlighted ? 'checked' : '' %>
+                    class="w-3.5 h-3.5 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                  Highlight
+                </label>
+                <button onclick="removeService(<%= index %>)" class="text-gray-400 hover:text-red-500 transition" title="Remove service">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Volume</label>
+                <input type="text" value="<%= service.transactionVolume.toLocaleString() %>" data-field="transactionVolume"
+                  class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition volume-input"
+                  placeholder="0">
+                <span class="validation-msg text-xs text-red-500 hidden"></span>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Total Value (ETB)</label>
+                <input type="text" value="<%= service.type === 'non-financial' ? '' : service.totalValue.toLocaleString('en-US', {minimumFractionDigits: 2}) %>" data-field="totalValue"
+                  class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition total-input"
+                  placeholder="0.00" <%= service.type === 'non-financial' ? 'disabled' : '' %>>
+                <span class="validation-msg text-xs text-red-500 hidden"></span>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Key Message</label>
+                <input type="text" value="<%= service.keyMessage %>" data-field="keyMessage"
+                  class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition"
+                  placeholder="Key insight...">
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Type</label>
+                <select data-field="type" onchange="toggleValueType(this)"
+                  class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
+                  <option value="financial" <%= service.type === 'financial' ? 'selected' : '' %>>Financial</option>
+                  <option value="non-financial" <%= service.type === 'non-financial' ? 'selected' : '' %>>Non-Financial</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <% }); %>
+        </div>
+
+        <!-- Display & Insight Settings -->
+        <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div>
+            <h3 class="text-sm font-bold text-navy-800 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <i data-lucide="eye" class="w-4 h-4 text-brand-500"></i>
+              Display Settings
+            </h3>
+            <div class="space-y-3">
+              <label class="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer">
+                <input type="checkbox" id="setting-metric-bars" checked class="w-4 h-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                <div>
+                  <div class="text-sm font-medium text-navy-900">Show metric bars</div>
+                  <div class="text-xs text-gray-500">Horizontal proportional bars under volume &amp; average value</div>
+                </div>
+              </label>
+              <label class="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer">
+                <input type="checkbox" id="setting-auto-highlight" checked class="w-4 h-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                <div>
+                  <div class="text-sm font-medium text-navy-900">Auto-highlight highest average value</div>
+                  <div class="text-xs text-gray-500">Emphasise the service with the top average transaction value</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-bold text-navy-800 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <i data-lucide="message-square-text" class="w-4 h-4 text-brand-500"></i>
+              Insight Settings
+            </h3>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Key Takeaway Mode</label>
+                <select id="setting-takeaway-mode" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
+                  <option value="auto">Automatic (generated from data)</option>
+                  <option value="custom">Custom override</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Takeaway Override</label>
+                <textarea id="setting-takeaway-override" rows="3" disabled
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition"
+                  placeholder="Enter your custom key takeaway message..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

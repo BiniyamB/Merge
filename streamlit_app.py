@@ -1,9 +1,11 @@
-"""POS & ATM Report Merger -- Streamlit version."""
+"""Report Merger + Digital Transaction Value Snapshot -- Streamlit version."""
 
 import gc
+import html as html_lib
 import io
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 
 st.set_page_config(
@@ -14,6 +16,8 @@ st.set_page_config(
 )
 
 from merger import MODES, merge_reports, build_filtered_workbook, build_workbook
+
+from snapshot_module import REPORT_DEFAULTS, SERVICE_DEFAULTS, calc_all, build_report_html, fmt_int
 
 # ── Global CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
@@ -200,6 +204,25 @@ st.markdown("""
         font-size: 0.75rem; font-weight: 700; color: #a855f7;
         text-transform: uppercase; letter-spacing: 1px; border-radius: 999px;
         border: 1px solid rgba(168,85,247,0.15); }
+
+    /* Page navigation tabs */
+    .page-nav { display: flex; gap: 14px; margin: 4px 0 20px; }
+    .page-nav .stButton > button {
+        background: rgba(255,255,255,0.05) !important;
+        border: 1px solid rgba(168,85,247,0.25) !important;
+        color: #c4b5fd !important;
+        box-shadow: none !important;
+        border-radius: 12px !important;
+        font-weight: 700 !important; }
+    .page-nav .stButton > button:hover {
+        border-color: rgba(0,212,255,0.5) !important;
+        background: rgba(0,212,255,0.06) !important;
+        color: #00d4ff !important; }
+
+    /* Snapshot editor styling */
+    div[data-testid="stDataEditor"] {
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        border-radius: 12px !important; overflow: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -209,13 +232,119 @@ for key, default in [
     ("records", []), ("columns", []), ("mode_key", None),
     ("pending_filters", {}),
     ("unique_values_cache", {}),
+    ("snap_page", False),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
 
+# ── Transaction Snapshot page ────────────────────────────────────────────────
+def _render_snapshot_page():
+    st.markdown('<p class="subtitle">Build the executive Digital Transaction Value Snapshot report &mdash; '
+                'edit the numbers, the report updates instantly.</p>', unsafe_allow_html=True)
+
+    with st.expander("Report Information", expanded=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            r_title = st.text_input("Report title", value=REPORT_DEFAULTS["title"], key="snap_rep_title")
+            r_org = st.text_input("Organization", value=REPORT_DEFAULTS["organization"], key="snap_rep_org")
+            r_subtitle = st.text_input("Subtitle", value=REPORT_DEFAULTS["subtitle"], key="snap_rep_subt")
+            r_tagline1 = st.text_input("Tagline", value=REPORT_DEFAULTS["tagline1"], key="snap_rep_tag1")
+        with c2:
+            r_brand = st.text_input("Brand", value=REPORT_DEFAULTS["brand"], key="snap_rep_brand")
+            r_date = st.text_input("Date", value=REPORT_DEFAULTS["date"], key="snap_rep_date")
+            r_tagline2 = st.text_input("Tagline 2 (footer)", value=REPORT_DEFAULTS["tagline2"], key="snap_rep_tag2")
+
+    report = {
+        "title": r_title, "organization": r_org, "brand": r_brand,
+        "tagline1": r_tagline1, "tagline2": r_tagline2,
+        "subtitle": r_subtitle, "date": r_date,
+    }
+
+    st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-green">&#128202;</div>'
+                '<div><p class="card-title">Transaction services</p>'
+                '<p class="card-sub">Edit / add / remove rows &mdash; calculations update live</p></div></div>',
+                unsafe_allow_html=True)
+
+    default_df = pd.DataFrame([
+        {"name": s["name"], "type": s["type"], "transactionVolume": int(s["transactionVolume"]),
+         "totalValue": float(s["totalValue"]), "keyMessage": s["keyMessage"],
+         "highlighted": s["highlighted"]}
+        for s in SERVICE_DEFAULTS
+    ])
+
+    if st.button("Reset to reference data", key="snap_reset"):
+        st.session_state.snap_editor = default_df
+        st.rerun()
+
+    edited = st.data_editor(
+        default_df,
+        key="snap_editor",
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "name": st.column_config.TextColumn("Service", width="medium"),
+            "type": st.column_config.SelectboxColumn(
+                "Type", options=["financial", "non-financial"], width="small"),
+            "transactionVolume": st.column_config.NumberColumn(
+                "Transaction Volume", min_value=0, step=100, format="%.0f", width="small"),
+            "totalValue": st.column_config.NumberColumn(
+                "Total Value (ETB)", min_value=0.0, step=1000.0, format="%.2f", width="small"),
+            "keyMessage": st.column_config.TextColumn("Key Message", width="large"),
+            "highlighted": st.column_config.CheckboxColumn("Highlight", width="small"),
+        },
+    )
+
+    s1, s2, s3 = st.columns(3)
+    show_bars = s1.checkbox("Show metric bars", value=True, key="snap_bars")
+    auto_hl = s2.checkbox("Auto-highlight highest average", value=True, key="snap_auto_hl")
+    takeaway_override = s3.text_input("Custom key takeaway (optional)", key="snap_takeaway")
+
+    services = []
+    for idx, row in enumerate(edited.to_dict("records")):
+        services.append({
+            "uid": f"row_{idx}",
+            "name": str(row.get("name") or "") or f"Service {idx + 1}",
+            "type": row.get("type") or "financial",
+            "transactionVolume": row.get("transactionVolume"),
+            "totalValue": row.get("totalValue"),
+            "keyMessage": row.get("keyMessage") or "",
+            "highlighted": bool(row.get("highlighted")),
+        })
+
+    calc = calc_all(services)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="section-sep"><span>Live Preview</span></div>', unsafe_allow_html=True)
+    st.caption("The report updates live. Use the buttons inside the preview to print (save as PDF) "
+               "or download as PNG. Icons and image export load from CDNs, so an internet connection is required.")
+    components.html(
+        build_report_html(report, calc, show_bars=show_bars, auto_highlight=auto_hl,
+                          takeaway_override=takeaway_override),
+        height=860,
+        scrolling=True,
+    )
+
+
 # ── Header ───────────────────────────────────────────────────────────────────
 st.markdown('<p class="gradient-title">Report Merger</p>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Consolidate POS, ATM &amp; QR transaction reports &mdash; in memory, nothing saved to disk.</p>', unsafe_allow_html=True)
+
+# ── Page Navigation ──────────────────────────────────────────────────────────
+st.markdown(
+    '<div class="page-nav">', unsafe_allow_html=True)
+n1, n2 = st.columns([1, 1])
+with n1:
+    if st.button("Merged Reports", key="nav_merger", use_container_width=True):
+        st.session_state.snap_page = False
+with n2:
+    if st.button("Transaction Snapshot", key="nav_snapshot", use_container_width=True):
+        st.session_state.snap_page = True
+st.markdown("</div>", unsafe_allow_html=True)
+
+if st.session_state.snap_page:
+    _render_snapshot_page()
+    st.stop()
 
 # ── Mode Selection ───────────────────────────────────────────────────────────
 st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-purple">1</div><div><p class="card-title">Choose report type</p><p class="card-sub">Select the type of reports you want to merge</p></div></div>', unsafe_allow_html=True)

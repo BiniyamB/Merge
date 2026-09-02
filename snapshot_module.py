@@ -1,0 +1,422 @@
+"""Digital Transaction Value Snapshot - pure-Python port.
+
+Ported from digital-transaction-snapshot/public/js/app.js so the same
+module is available on the deployed Streamlit app without a Node server.
+"""
+
+import html as _html
+import pandas as pd
+
+REPORT_DEFAULTS = {
+    "title": "DIGITAL TRANSACTION VALUE SNAPSHOT",
+    "organization": "ETHSWITCH",
+    "brand": "EthioPay",
+    "tagline1": "Making Payment Simple and Affordable",
+    "tagline2": "One Payment. Every Possibility.",
+    "subtitle": "Performance Overview by Service",
+    "date": "31.08.26",
+}
+
+SERVICE_DEFAULTS = [
+    {"name": "CASH WITHDRAWAL", "type": "financial", "transactionVolume": 306455,
+     "totalValue": 455114740.00, "keyMessage": "Lower-value transactions", "highlighted": False},
+    {"name": "POS PURCHASE", "type": "financial", "transactionVolume": 10189,
+     "totalValue": 33248484.72, "keyMessage": "Moderate transaction value", "highlighted": False},
+    {"name": "IPS P2P", "type": "financial", "transactionVolume": 926648,
+     "totalValue": 4049226900.62, "keyMessage": "Volume leader and value driver", "highlighted": False},
+    {"name": "QR", "type": "financial", "transactionVolume": 30248,
+     "totalValue": 268061663.69, "keyMessage": "", "highlighted": True},
+    {"name": "BALANCE INQUIRY & MINI STATEMENT", "type": "non-financial",
+     "transactionVolume": 18406, "totalValue": 0, "keyMessage": "Non-financial service",
+     "highlighted": False},
+]
+
+REPORT_CSS = """
+:root {
+  --navy-900: #0B2A5B; --navy-100: #d9e2f0; --navy-500: #416eb4;
+  --brand-500: #F4511E; --orange-light: #FFF3E0;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif; }
+.toolbar { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 20px; }
+.toolbar button {
+  font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  border: 1px solid #d7dbe3; background: #ffffff; color: #0B2A5B;
+  border-radius: 8px; padding: 8px 16px; transition: all .2s;
+}
+.toolbar button:hover { border-color: #F4511E; color: #F4511E; }
+.report-landscape {
+  width: 1038px; height: 735px; background: #ffffff; margin: 0 auto;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 4px 24px rgba(11,42,91,0.12), 0 1px 4px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+}
+.report-header { display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; min-height: 62px;
+  background: linear-gradient(135deg, #0B2A5B 0%, #1e3a6b 100%); color: #fff; }
+.header-left { display: flex; align-items: center; }
+.header-center { flex: 1; text-align: center; padding: 0 16px; }
+.header-right { display: flex; align-items: center; }
+.org-badge { display: flex; align-items: center; gap: 8px; }
+.org-icon { width: 36px; height: 36px; background: rgba(255,255,255,.15);
+  border: 1.5px solid rgba(255,255,255,.3); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; letter-spacing: .5px; color: #fff; }
+.org-name { font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+.org-sub { font-size: 8px; color: rgba(255,255,255,.6); letter-spacing: .5px; text-transform: uppercase; }
+.brand-badge { display: inline-block; background: #F4511E; color: #fff; font-size: 10px;
+  font-weight: 800; letter-spacing: 2px; padding: 2px 12px; border-radius: 3px; margin-bottom: 4px; }
+.report-title { font-size: 15px; font-weight: 900; letter-spacing: 2px;
+  text-transform: uppercase; margin: 0; line-height: 1.2; }
+.report-subtitle { font-size: 9px; color: rgba(255,255,255,.65); margin: 2px 0 0;
+  letter-spacing: 1px; text-transform: uppercase; }
+.date-badge { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.date-label { font-size: 7px; color: rgba(255,255,255,.5); letter-spacing: 1.5px; text-transform: uppercase; }
+.date-value { font-size: 14px; font-weight: 700; letter-spacing: .5px;
+  background: rgba(255,255,255,.1); padding: 2px 10px; border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.15); }
+.report-table-wrapper { flex: 1; overflow: hidden; }
+.report-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.report-table thead tr { background: #0B2A5B; color: #fff; }
+.report-table th { padding: 7px 12px; font-size: 8px; font-weight: 700; letter-spacing: 1.2px;
+  text-transform: uppercase; text-align: left; white-space: nowrap; }
+.th-service { width: 22%; }
+.th-volume { width: 20%; text-align: right; }
+.th-value { width: 22%; text-align: right; }
+.th-avg { width: 22%; text-align: right; }
+.th-message { width: 14%; text-align: left; }
+.report-table td { padding: 14px 12px; vertical-align: middle; border-bottom: 1px solid #f0f0f0; height: 84px; }
+.report-table tbody tr:last-child td { border-bottom: none; }
+.report-table tbody tr:nth-child(even) { background: #fafbfc; }
+.report-table tbody tr.highlight-row { background: #FFF3E0 !important; }
+.report-table tbody tr.highlight-row td { border-bottom-color: #ffe0cc; }
+.svc-cell { display: flex; align-items: center; gap: 8px; }
+.svc-icon { width: 28px; height: 28px; border-radius: 6px; display: flex;
+  align-items: center; justify-content: center; flex-shrink: 0; }
+.svc-icon.financial { background: #d9e2f0; color: #0B2A5B; }
+.svc-icon.non-financial { background: #e8eaed; color: #5f6368; }
+.svc-icon svg { width: 14px; height: 14px; }
+.svc-name { font-weight: 700; color: #0B2A5B; font-size: 10.5px; letter-spacing: .3px; line-height: 1.2; }
+.highlight-row .svc-name { color: #F4511E; }
+.num-cell { text-align: right; font-variant-numeric: tabular-nums; }
+.num-primary { font-weight: 700; font-size: 12px; color: #0B2A5B; line-height: 1.2; }
+.highlight-row .num-primary { color: #F4511E; }
+.num-dash { color: #9ca3af; font-style: italic; }
+.metric-bar-wrap { margin-top: 3px; }
+.metric-bar { height: 3px; border-radius: 2px; background: #d9e2f0; overflow: hidden; }
+.metric-bar-fill { height: 100%; border-radius: 2px; background: #416eb4; transition: width .4s ease; }
+.highlight-row .metric-bar-fill { background: #F4511E; }
+.msg-cell { font-size: 9.5px; color: #6b7280; line-height: 1.3; }
+.msg-cell.msg-highlight { color: #F4511E; font-weight: 600; }
+.msg-badge { display: inline-block; background: #F4511E; color: #fff; font-size: 7px;
+  font-weight: 700; letter-spacing: .8px; padding: 1px 6px; border-radius: 3px;
+  text-transform: uppercase; margin-top: 2px; }
+.report-insights { display: grid; grid-template-columns: 1fr 1.3fr 1fr; border-top: 2px solid #0B2A5B; }
+.insight-card { padding: 10px 14px; border-right: 1px solid #e5e7eb; }
+.insight-card:last-child { border-right: none; }
+.insight-label { font-size: 7.5px; font-weight: 800; letter-spacing: 1.5px; color: #0B2A5B;
+  text-transform: uppercase; margin-bottom: 4px; }
+.insight-service { font-size: 14px; font-weight: 800; color: #0B2A5B; margin-bottom: 2px; }
+.insight-detail { font-size: 9px; color: #6b7280; line-height: 1.35; }
+.qr-avg-main { text-align: center; padding: 4px 0 6px; border-bottom: 1px solid #f0f0f0; margin-bottom: 6px; }
+.qr-avg-label { font-size: 6.5px; font-weight: 700; letter-spacing: 1px; color: #9ca3af; text-transform: uppercase; }
+.qr-avg-value { font-size: 18px; font-weight: 900; color: #F4511E; line-height: 1.3; }
+.qr-avg-sub { font-size: 8px; color: #9ca3af; }
+.qr-comparisons { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+.qr-comp { text-align: center; }
+.qr-comp-multiplier { font-size: 14px; font-weight: 800; color: #0B2A5B; line-height: 1.2; }
+.qr-comp-label { font-size: 7px; color: #9ca3af; line-height: 1.2; }
+.takeaway-text { font-size: 9.5px; color: #4b5563; line-height: 1.5; }
+.report-footer { display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 20px; background: #0B2A5B; color: #fff; min-height: 34px; }
+.footer-org-name { font-size: 10px; font-weight: 700; letter-spacing: .5px; }
+.footer-tagline { font-size: 8px; color: rgba(255,255,255,.55); margin-left: 8px; font-style: italic; }
+.footer-web { display: flex; align-items: center; gap: 5px; font-size: 9px; color: rgba(255,255,255,.7); }
+.footer-web svg { width: 12px; height: 12px; }
+@media print {
+  .toolbar, .toolbar * { display: none !important; }
+  body { background: #fff !important; }
+  .report-landscape { box-shadow: none; border: none; }
+}
+"""
+
+
+def _num(v, default=0):
+    if v is None:
+        return default
+    if isinstance(v, float) and pd.isna(v):
+        return default
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _bool(v):
+    return bool(v)
+
+
+def fmt_int(n):
+    n = _num(n)
+    if n <= 0:
+        return "-"
+    return f"{n:,.0f}"
+
+
+def fmt_dec(n):
+    n = _num(n)
+    if n <= 0:
+        return "-"
+    return f"{n:,.2f}"
+
+
+def _icon(name):
+    n = (name or "").upper()
+    if "CASH" in n or "WITHDRAW" in n:
+        return "banknote"
+    if "POS" in n or "PURCHASE" in n:
+        return "credit-card"
+    if "P2P" in n or "IPS" in n:
+        return "users"
+    if "QR" in n:
+        return "qr-code"
+    if "BALANCE" in n or "INQUIRY" in n or "MINI" in n:
+        return "landmark"
+    return "circle-dot"
+
+
+def _short_name(name):
+    n = (name or "").upper()
+    if "CASH" in n:
+        return "Cash Withdrawal"
+    if "POS" in n:
+        return "POS"
+    if "IPS" in n or "P2P" in n:
+        return "P2P"
+    if "QR" in n:
+        return "QR"
+    return name or ""
+
+
+def _initials(org):
+    org = (org or "ES")
+    words = [w for w in org.split() if w]
+    chars = "".join(w[0] for w in words[:4]) if words else "ES"
+    if len(chars) < 2:
+        chars = org[:2]
+    return chars[:2].upper()
+
+
+def _esc(text):
+    return _html.escape(str(text if text is not None else ""))
+
+
+def calc_all(services):
+    """Mirror of app.js calcAll()."""
+    enriched = []
+    for idx, s in enumerate(services):
+        vol = max(0, _num(s.get("transactionVolume")))
+        val = max(0, _num(s.get("totalValue")))
+        is_fin = s.get("type") == "financial" and val > 0
+        avg = (val / vol) if (is_fin and vol > 0) else 0
+        enriched.append({
+            "uid": s.get("uid") or f"row_{idx}",
+            "name": s.get("name") or f"Service {idx + 1}",
+            "type": s.get("type") or "financial",
+            "transactionVolume": vol,
+            "totalValue": val,
+            "keyMessage": s.get("keyMessage") or "",
+            "highlighted": _bool(s.get("highlighted")),
+            "isFinancial": is_fin,
+            "averageTransactionValue": avg,
+        })
+
+    max_vol = max((x["transactionVolume"] for x in enriched), default=0)
+    feas = [x for x in enriched if x["isFinancial"]]
+    max_avg = max((x["averageTransactionValue"] for x in feas), default=0)
+    for x in enriched:
+        x["volumePercent"] = (x["transactionVolume"] / max_vol * 100) if max_vol > 0 else 0
+        x["avgPercent"] = (x["averageTransactionValue"] / max_avg * 100) if max_avg > 0 else 0
+
+    volume_leader = max(feas, key=lambda x: x["transactionVolume"], default=None) if feas else None
+    by_avg = sorted(feas, key=lambda x: x["averageTransactionValue"], reverse=True) if feas else []
+    highest_avg = by_avg[0] if by_avg else None
+    highest_total = max(feas, key=lambda x: x["totalValue"], default=None) if feas else None
+
+    qr = next((x for x in enriched if "QR" in (x.get("name") or "").upper()), None)
+    qr_advantages = []
+    if qr and qr["isFinancial"]:
+        others = [x for x in enriched if x["isFinancial"] and x["uid"] != qr["uid"]]
+
+        def _order_key(x):
+            n = (x.get("name") or "").upper()
+            for i, token in enumerate(["IPS", "POS", "CASH"]):
+                if token in n:
+                    return i
+            return 99
+
+        others.sort(key=lambda x: (_order_key(x), -x["averageTransactionValue"]))
+        for o in others:
+            if o["averageTransactionValue"] > 0:
+                ratio = qr["averageTransactionValue"] / o["averageTransactionValue"]
+                qr_advantages.append({
+                    "service": o["name"],
+                    "ratio": ratio,
+                    "label": f"{ratio:.1f}x",
+                    "description": "Higher than " + _short_name(o["name"]),
+                })
+
+    if qr and qr["isFinancial"] and not (qr.get("keyMessage") or "").strip():
+        if highest_avg and highest_avg.get("name") == qr.get("name"):
+            qr["keyMessage"] = "HIGHEST average transaction value"
+
+    return {
+        "services": enriched,
+        "volumeLeader": volume_leader,
+        "highestAvg": highest_avg,
+        "highestTotal": highest_total,
+        "qr": qr,
+        "qrAdvantages": qr_advantages,
+        "takeaway": _takeaway(qr, volume_leader, feas),
+    }
+
+
+def _takeaway(qr, volume_leader, feas):
+    """Mirror of app.js generateTakeaway()."""
+    if not qr or not qr["isFinancial"] or not feas:
+        return ""
+    by_vol = sorted(feas, key=lambda x: x["transactionVolume"], reverse=True)
+    qr_vol_rank = next((i + 1 for i, x in enumerate(by_vol) if x["uid"] == qr["uid"]), len(by_vol))
+    by_avg = sorted(feas, key=lambda x: x["averageTransactionValue"], reverse=True)
+    qr_avg_rank = next((i + 1 for i, x in enumerate(by_avg) if x["uid"] == qr["uid"]), len(by_avg))
+
+    leader_name = _short_name(volume_leader["name"]) if volume_leader else "other services"
+    qr_name = qr["name"]
+
+    if qr_avg_rank == 1 and qr_vol_rank > 1:
+        return (qr_name + " remains smaller in volume compared to " + leader_name
+                + ", but each transaction carries significantly more value \u2014 making it a "
+                + "high-potential growth channel for digital merchant payments.")
+    if qr_avg_rank == 1 and qr_vol_rank == 1:
+        return (qr_name + " leads in both volume and average transaction value, "
+                + "demonstrating strong adoption and high-value usage across the payment ecosystem.")
+    if qr_avg_rank <= 2:
+        return (qr_name + " shows competitive average transaction value. With growing merchant adoption, "
+                + "it represents a key channel for high-value digital payments.")
+    return (qr_name + " has room for growth in average transaction value. Continued merchant onboarding "
+            + "and user education could drive higher-value transactions over time.")
+
+
+def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeaway_override=""):
+    """Render the 1038x735 landscape report as a self-contained HTML string."""
+    services = calc["services"]
+    highest_avg = calc["highestAvg"]
+    highest_avg_name = highest_avg.get("name") if highest_avg else None
+    qr = calc["qr"]
+    takeaway = takeaway_override.strip() or calc["takeaway"]
+
+    rows = []
+    for s in services:
+        is_highest = highest_avg_name and highest_avg_name == s["name"]
+        effective_h1 = s["highlighted"] or (auto_highlight and is_highest)
+        tr_class = ' class="highlight-row"' if effective_h1 else ""
+
+        icon_class = "financial" if s["isFinancial"] else "non-financial"
+        svc = ('<td><div class="svc-cell"><div class="svc-icon ' + icon_class + '">'
+               '<i data-lucide="' + _icon(s["name"]) + '"></i></div>'
+               '<span class="svc-name">' + _esc(s["name"]) + "</span></div></td>")
+
+        bar = lambda pct: (
+            ('<div class="metric-bar-wrap"><div class="metric-bar">'
+             '<div class="metric-bar-fill" style="width:' + f"{pct:.1f}" + '%"></div></div></div>')
+            if show_bars else "")
+
+        vol = ('<div class="num-primary">' + fmt_int(s["transactionVolume"]) + "</div>" + bar(s["volumePercent"]))
+        tot = ('<div class="num-primary">' + ("ETB " + fmt_dec(s["totalValue"]) if s["isFinancial"]
+                                              else '<span class="num-dash">-</span>') + "</div>")
+        avg = ('<div class="num-primary">' + ("ETB " + fmt_dec(s["averageTransactionValue"]) if s["isFinancial"]
+                                              else '<span class="num-dash">-</span>') + "</div>"
+               + (bar(s["avgPercent"]) if s["isFinancial"] else ""))
+
+        msg = "msg-highlight" if is_highest else ""
+        badge = ""
+        if is_highest:
+            badge = ('<div class="msg-badge"><i data-lucide="star"></i> HIGHEST AVG VALUE</div>')
+        key_msg = ('<td class="msg-cell ' + msg + '">' + _esc(s["keyMessage"]) + badge + "</td>")
+
+        rows.append("<tr" + tr_class + ">" + svc
+                    + '<td class="num-cell">' + vol + "</td>"
+                    + '<td class="num-cell">' + tot + "</td>"
+                    + '<td class="num-cell">' + avg + "</td>"
+                    + key_msg + "</tr>")
+
+    table = ('<div class="report-table-wrapper"><table class="report-table"><thead><tr>'
+             '<th class="th-service">SERVICE</th>'
+             '<th class="th-volume">TRANSACTION VOLUME</th>'
+             '<th class="th-value">TOTAL VALUE (ETB)</th>'
+             '<th class="th-avg">AVG TRANSACTION VALUE (ETB)</th>'
+             '<th class="th-message">KEY MESSAGE</th>'
+             "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>")
+
+    leader = calc["volumeLeader"]
+    vl_name = _esc(leader["name"]) if leader else "-"
+    vl_detail = _esc(fmt_int(leader["transactionVolume"]) + " transactions drive the ecosystem's scale.") if leader else "&mdash;"
+
+    qr_avg = "-"
+    comparisons = ""
+    if qr and qr["isFinancial"]:
+        qr_avg = "ETB " + fmt_dec(qr["averageTransactionValue"])
+        comps = []
+        for adv in calc["qrAdvantages"]:
+            comps.append('<div class="qr-comp"><div class="qr-comp-multiplier">' + adv["label"]
+                         + '</div><div class="qr-comp-label">' + _esc(adv["description"]) + "</div></div>")
+        comparisons = '<div class="qr-comparisons">' + "".join(comps) + "</div>"
+
+    insights = ('<div class="report-insights">'
+                '<div class="insight-card">'
+                '<div class="insight-label">VOLUME LEADER</div>'
+                '<div class="insight-service">' + vl_name + "</div>"
+                '<div class="insight-detail">' + vl_detail + "</div></div>"
+                '<div class="insight-card">'
+                '<div class="insight-label">QR VALUE ADVANTAGE</div>'
+                '<div class="qr-avg-main"><div class="qr-avg-label">AVERAGE TRANSACTION VALUE</div>'
+                '<div class="qr-avg-value">' + qr_avg + '</div><div class="qr-avg-sub">per transaction</div></div>'
+                + comparisons + "</div>"
+                '<div class="insight-card">'
+                '<div class="insight-label">KEY TAKEAWAY</div>'
+                '<div class="takeaway-text">' + _esc(takeaway) + "</div></div>"
+                "</div>")
+
+    header = ('<div class="report-header">'
+              '<div class="header-left"><div class="org-badge">'
+              '<div class="org-icon">' + _initials(report.get("organization")) + "</div>"
+              '<div><div class="org-name">' + _esc(report.get("organization")) + "</div>"
+              '<div class="org-sub">SWITCH COMPANY</div></div></div></div>'
+              '<div class="header-center"><div class="brand-badge">' + _esc(report.get("brand")) + "</div>"
+              '<h1 class="report-title">' + _esc(report.get("title")) + "</h1>"
+              '<p class="report-subtitle">' + _esc(report.get("subtitle")) + "</p></div>"
+              '<div class="header-right"><div class="date-badge">'
+              '<span class="date-label">DATE</span>'
+              '<span class="date-value">' + _esc(report.get("date")) + "</span></div></div></div>")
+
+    footer = ('<div class="report-footer"><div>'
+              '<span class="footer-org-name">' + _esc(report.get("organization")) + " S.C.</span>"
+              '<span class="footer-tagline">' + _esc(report.get("tagline1")) + "</span></div>"
+              '<div class="footer-web"><i data-lucide="globe"></i><span>www.ethswitch.et</span></div></div>')
+
+    return ("<!DOCTYPE html><html><head><meta charset='utf-8'/><style>" + REPORT_CSS + "</style>"
+            "<script src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'></script>"
+            "<script src='https://unpkg.com/lucide@latest'></script></head><body>"
+            "<div class='toolbar'>"
+            "<button onclick='window.print()'>Print / Save as PDF</button>"
+            "<button onclick='capturePNG()'>Download PNG</button></div>"
+            "<div id='report-content'>" + header + table + insights + footer + "</div>"
+            "<script>lucide.createIcons();"
+            "function capturePNG(){var t=document.querySelector('.toolbar');var e=document.getElementById('report-content');"
+            "t.style.visibility='hidden';"
+            "html2canvas(e,{scale:2,useCORS:true,backgroundColor:'#ffffff',windowWidth:1038,windowHeight:735})"
+            ".then(function(c){t.style.visibility='visible';var a=document.createElement('a');"
+            "a.download='Digital_Transaction_Value_Snapshot.png';a.href=c.toDataURL('image/png');a.click();})"
+            ".catch(function(err){t.style.visibility='visible';"
+            "alert('PNG export needs internet (html2canvas loads from CDN): '+err.message);});}"
+            "</script></body></html>")

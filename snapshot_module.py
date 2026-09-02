@@ -116,6 +116,10 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .org-sub { font-size: 8px; color: rgba(255,255,255,.6); letter-spacing: .5px; text-transform: uppercase; }
 .org-logo { height: 34px; width: auto; border-radius: 4px; }
 .bird-logo { height: 30px; width: auto; border-radius: 4px; flex-shrink: 0; }
+.bird-group { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.bird-text { text-align: right; line-height: 1.1; }
+.bird-name { font-size: 10px; font-weight: 800; letter-spacing: .5px; color: #fff; }
+.bird-tagline { font-size: 6.5px; color: rgba(255,255,255,.7); letter-spacing: .5px; white-space: nowrap; }
 .phone { width: 24px; height: 42px; background: #0B2A5B; border: 1.5px solid rgba(255,255,255,.35);
   border-radius: 6px; padding: 3px; flex-shrink: 0; position: relative; }
 .phone-screen { width: 100%; height: 100%; border-radius: 3px; overflow: hidden;
@@ -155,6 +159,13 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
   align-items: center; justify-content: center; flex-shrink: 0; }
 .svc-icon.financial { background: #d9e2f0; color: #0B2A5B; }
 .svc-icon.non-financial { background: #e8eaed; color: #5f6368; }
+.svc-icon.cash { background: #dff0e2; color: #1a7a3a; }
+.svc-icon.pos { background: #e3edfb; color: #1e56c0; }
+.svc-icon.p2p { background: #f3e3fb; color: #7a1fa2; }
+.svc-icon.qr { background: #fff0e0; color: #e07b0a; }
+.svc-icon.landmark { background: #e2f0f7; color: #0f7a9e; }
+.svc-icon.smartphone { background: #fde8e8; color: #c0392b; }
+.svc-icon.default { background: #d9e2f0; color: #0B2A5B; }
 .svc-icon svg { width: 14px; height: 14px; }
 .svc-name { font-weight: 700; color: #0B2A5B; font-size: 10.5px; letter-spacing: .3px; line-height: 1.2; }
 .highlight-row .svc-name { color: #F4511E; }
@@ -246,6 +257,21 @@ def _icon(name):
     if "BALANCE" in n or "INQUIRY" in n or "MINI" in n:
         return "landmark"
     return "circle-dot"
+
+
+def _icon_class(name):
+    n = (name or "").upper()
+    if "CASH" in n or "WITHDRAW" in n:
+        return "cash"
+    if "POS" in n or "PURCHASE" in n:
+        return "pos"
+    if "P2P" in n or "IPS" in n:
+        return "p2p"
+    if "QR" in n:
+        return "qr"
+    if "BALANCE" in n or "INQUIRY" in n or "MINI" in n:
+        return "landmark"
+    return "default"
 
 
 def _short_name(name):
@@ -385,7 +411,7 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
         tr_class = ' class="highlight-row"' if effective_h1 else ""
 
         icon_class = "financial" if s["isFinancial"] else "non-financial"
-        svc = ('<td><div class="svc-cell"><div class="svc-icon ' + icon_class + '">'
+        svc = ('<td><div class="svc-cell"><div class="svc-icon ' + icon_class + ' ' + _icon_class(s["name"]) + '">'
                '<i data-lucide="' + _icon(s["name"]) + '"></i></div>'
                '<span class="svc-name">' + _esc(s["name"]) + "</span></div></td>")
 
@@ -464,7 +490,10 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
               '<div class="date-badge"><span class="date-label">DATE</span>'
               '<span class="date-value">' + _esc(report.get("date")) + "</span></div>"
               + _phone_mockup() +
-              '<img class="bird-logo" src="' + bird_logo + '" alt="EthioPay">'
+              '<div class="bird-group"><div class="bird-text">'
+              '<div class="bird-name">Ethiopay</div>'
+              '<div class="bird-tagline">One Payment, Every Possibility</div></div>'
+              '<img class="bird-logo" src="' + bird_logo + '" alt="EthioPay"></div>'
               "</div></div>")
 
     footer = ('<div class="report-footer"><div>'

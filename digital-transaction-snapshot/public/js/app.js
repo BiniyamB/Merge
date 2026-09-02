@@ -117,6 +117,16 @@
     return 'circle-dot';
   }
 
+  function getServiceIconClass(name) {
+    var n = (name || '').toUpperCase();
+    if (n.indexOf('CASH') >= 0 || n.indexOf('WITHDRAW') >= 0) return 'cash';
+    if (n.indexOf('POS') >= 0 || n.indexOf('PURCHASE') >= 0) return 'pos';
+    if (n.indexOf('P2P') >= 0 || n.indexOf('IPS') >= 0) return 'p2p';
+    if (n.indexOf('QR') >= 0) return 'qr';
+    if (n.indexOf('BALANCE') >= 0 || n.indexOf('INQUIRY') >= 0 || n.indexOf('MINI') >= 0) return 'landmark';
+    return 'default';
+  }
+
   // ---- UTILITIES ----
   function gv(id) {
     var el = document.getElementById(id);
@@ -326,7 +336,7 @@
 
       // Service cell
       var tdSvc = '<td><div class="svc-cell">' +
-        '<div class="svc-icon ' + (s.isFinancial ? 'financial' : 'non-financial') + '">' +
+        '<div class="svc-icon ' + (s.isFinancial ? 'financial' : 'non-financial') + ' ' + getServiceIconClass(s.name) + '">' +
         '<i data-lucide="' + s.icon + '"></i></div>' +
         '<span class="svc-name">' + escHtml(s.name) + '</span></div></td>';
 

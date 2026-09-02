@@ -107,6 +107,32 @@
   flex-shrink: 0;
 }
 
+.bird-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.bird-text {
+  text-align: right;
+  line-height: 1.1;
+}
+
+.bird-name {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+}
+
+.bird-tagline {
+  font-size: 6.5px;
+  color: rgba(255,255,255,0.7);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
 /* Decorative phone mockup with QR on an orange screen */
 .phone {
   width: 24px;
@@ -271,15 +297,17 @@
   flex-shrink: 0;
 }
 
-.svc-icon.financial {
-  background: var(--navy-100);
-  color: var(--navy-900);
-}
+.svc-icon.financial { background: var(--navy-100); color: var(--navy-900); }
+.svc-icon.non-financial { background: #e8eaed; color: #5f6368; }
 
-.svc-icon.non-financial {
-  background: #e8eaed;
-  color: #5f6368;
-}
+/* Individual tinted icon cards per service (colored by service type) */
+.svc-icon.cash { background: #dff0e2; color: #1a7a3a; }
+.svc-icon.pos { background: #e3edfb; color: #1e56c0; }
+.svc-icon.p2p { background: #f3e3fb; color: #7a1fa2; }
+.svc-icon.qr { background: #fff0e0; color: #e07b0a; }
+.svc-icon.landmark { background: #e2f0f7; color: #0f7a9e; }
+.svc-icon.smartphone { background: #fde8e8; color: #c0392b; }
+.svc-icon.default { background: var(--navy-100); color: var(--navy-900); }
 
 .svc-icon svg, .svc-icon i {
   width: 14px;

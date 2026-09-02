@@ -106,14 +106,17 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
   background: linear-gradient(135deg, #0B2A5B 0%, #1e3a6b 100%); color: #fff; }
 .header-left { display: flex; align-items: center; }
 .header-center { flex: 1; text-align: center; padding: 0 16px; }
-.header-right { display: flex; align-items: center; }
+.header-right { display: flex; align-items: center; flex-shrink: 0; }
+.header-right-inner { display: flex; align-items: center; gap: 10px; }
+.header-sep { width: 1px; align-self: stretch; background: rgba(255,255,255,.2); }
 .org-badge { display: flex; align-items: center; gap: 8px; }
 .org-icon { width: 36px; height: 36px; background: rgba(255,255,255,.15);
   border: 1.5px solid rgba(255,255,255,.3); border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 800; letter-spacing: .5px; color: #fff; }
 .org-name { font-size: 12px; font-weight: 700; letter-spacing: 1px; }
-.org-sub { font-size: 8px; color: rgba(255,255,255,.6); letter-spacing: .5px; text-transform: uppercase; }
+.org-sub { font-size: 8px; color: rgba(255,255,255,.6); letter-spacing: .5px;
+  text-transform: none; white-space: nowrap; max-width: 150px; }
 .org-logo { height: 34px; width: auto; border-radius: 4px; }
 .bird-logo { height: 30px; width: auto; border-radius: 4px; flex-shrink: 0; }
 .bird-group { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
@@ -144,11 +147,21 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .report-table thead tr { background: #0B2A5B; color: #fff; }
 .report-table th { padding: 7px 12px; font-size: 8px; font-weight: 700; letter-spacing: 1.2px;
   text-transform: uppercase; text-align: left; white-space: nowrap; }
-.th-service { width: 22%; }
+.th-inner { display: flex; align-items: center; gap: 4px; }
+.th-num { justify-content: flex-end; }
+.th-inner svg { width: 10px; height: 10px; flex-shrink: 0; }
+.th-icon { display: inline-flex; width: 16px; height: 16px; border-radius: 3px;
+  align-items: center; justify-content: center; flex-shrink: 0; opacity: .9; }
+.th-icon-blue { background: #2d5190; }
+.th-icon-purple { background: #7a4fa0; }
+.th-icon-green { background: #2f9e62; }
+.th-icon-teal { background: #156e8a; }
+.th-icon svg { width: 9px; height: 9px; }
+.th-service { width: 19%; }
 .th-volume { width: 20%; text-align: right; }
-.th-value { width: 22%; text-align: right; }
-.th-avg { width: 22%; text-align: right; }
-.th-message { width: 14%; text-align: left; }
+.th-value { width: 21%; text-align: right; }
+.th-avg { width: 24%; text-align: right; }
+.th-message { width: 16%; text-align: left; }
 .report-table td { padding: 14px 12px; vertical-align: middle; border-bottom: 1px solid #f0f0f0; height: 84px; }
 .report-table tbody tr:last-child td { border-bottom: none; }
 .report-table tbody tr:nth-child(even) { background: #fafbfc; }
@@ -440,11 +453,16 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
                     + key_msg + "</tr>")
 
     table = ('<div class="report-table-wrapper"><table class="report-table"><thead><tr>'
-             '<th class="th-service">SERVICE</th>'
-             '<th class="th-volume">TRANSACTION VOLUME</th>'
-             '<th class="th-value">TOTAL VALUE (ETB)</th>'
-             '<th class="th-avg">AVG TRANSACTION VALUE (ETB)</th>'
-             '<th class="th-message">KEY MESSAGE</th>'
+             '<th class="th-service"><span class="th-inner"><span class="th-icon th-icon-blue">'
+             '<i data-lucide="list"></i></span>SERVICE</span></th>'
+             '<th class="th-volume"><span class="th-inner th-num"><span class="th-icon th-icon-purple">'
+             '<i data-lucide="hash"></i></span>TRANSACTION VOLUME</span></th>'
+             '<th class="th-value"><span class="th-inner th-num"><span class="th-icon th-icon-teal">'
+             '<i data-lucide="wallet"></i></span>TOTAL VALUE (ETB)</span></th>'
+             '<th class="th-avg"><span class="th-inner th-num"><span class="th-icon th-icon-green">'
+             '<i data-lucide="trending-up"></i></span>AVG TRANSACTION VALUE (ETB)</span></th>'
+             '<th class="th-message"><span class="th-inner"><span class="th-icon th-icon-purple">'
+             '<i data-lucide="message-square"></i></span>KEY MESSAGE</span></th>'
              "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>")
 
     leader = calc["volumeLeader"]
@@ -482,19 +500,20 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
               '<div class="header-left"><div class="org-badge">'
               '<img class="org-logo" src="' + org_logo + '" alt="' + _esc(report.get("organization")) + '">'
               '<div><div class="org-name">' + _esc(report.get("organization")) + "</div>"
-              '<div class="org-sub">SWITCH COMPANY</div></div></div></div>'
+              '<div class="org-sub">Making Payments Simple and Affordable</div></div></div></div>'
               '<div class="header-center"><div class="brand-badge">' + _esc(report.get("brand")) + "</div>"
               '<h1 class="report-title">' + _esc(report.get("title")) + "</h1>"
               '<p class="report-subtitle">' + _esc(report.get("subtitle")) + "</p></div>"
-              '<div class="header-right">'
-              '<div class="date-badge"><span class="date-label">DATE</span>'
-              '<span class="date-value">' + _esc(report.get("date")) + "</span></div>"
-              + _phone_mockup() +
+              '<div class="header-right"><div class="header-right-inner">'
               '<div class="bird-group"><div class="bird-text">'
               '<div class="bird-name">Ethiopay</div>'
               '<div class="bird-tagline">One Payment, Every Possibility</div></div>'
               '<img class="bird-logo" src="' + bird_logo + '" alt="EthioPay"></div>'
-              "</div></div>")
+              '<div class="header-sep"></div>'
+              '<div class="date-badge"><span class="date-label">DATE</span>'
+              '<span class="date-value">' + _esc(report.get("date")) + "</span></div>"
+              + _phone_mockup() +
+              "</div></div></div>")
 
     footer = ('<div class="report-footer"><div>'
               '<span class="footer-org-name">' + _esc(report.get("organization")) + " S.C.</span>"

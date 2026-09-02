@@ -61,7 +61,19 @@
 
 .header-left { display: flex; align-items: center; }
 .header-center { flex: 1; text-align: center; padding: 0 16px; }
-.header-right { display: flex; align-items: center; }
+.header-right { display: flex; align-items: center; flex-shrink: 0; }
+
+.header-right-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-sep {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255,255,255,0.2);
+}
 
 .org-badge {
   display: flex;
@@ -91,7 +103,9 @@
   font-size: 8px;
   color: rgba(255,255,255,0.6);
   letter-spacing: 0.5px;
-  text-transform: uppercase;
+  text-transform: none;
+  white-space: nowrap;
+  max-width: 150px;
 }
 
 .org-logo {
@@ -251,11 +265,48 @@
   white-space: nowrap;
 }
 
-.th-service { width: 22%; }
+.th-inner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.th-num {
+  justify-content: flex-end;
+}
+
+.th-inner svg {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.th-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.th-icon-blue { background: #2d5190; }
+.th-icon-purple { background: #7a4fa0; }
+.th-icon-green { background: #2f9e62; }
+.th-icon-teal { background: #156e8a; }
+
+.th-icon svg {
+  width: 9px;
+  height: 9px;
+}
+
+.th-service { width: 19%; }
 .th-volume { width: 20%; text-align: right; }
-.th-value { width: 22%; text-align: right; }
-.th-avg { width: 22%; text-align: right; }
-.th-message { width: 14%; text-align: left; }
+.th-value { width: 21%; text-align: right; }
+.th-avg { width: 24%; text-align: right; }
+.th-message { width: 16%; text-align: left; }
 
 .report-table td {
   padding: 14px 12px;

@@ -172,6 +172,53 @@ def test_merge_dedupe_ignores_single_occurrence_rows():
     assert result_unique.total_rows == 6  # no overlapping identical rows
 
 
+def test_duplicate_records_populated_when_same_file_twice():
+    # When the same file is uploaded twice, every row appears twice so all
+    # rows are duplicates. duplicate_records contains both copies.
+    files = [
+        ("export.xlsx", _xlsx_export_style()),
+        ("export_copy.xlsx", _xlsx_export_style()),
+    ]
+    result = merge_reports(files, dedupe=False)
+    assert result.total_rows == 6
+    assert len(result.duplicate_records) == 6  # all 6 rows are duplicates
+    # duplicates can be built into a workbook without errors
+    wb_bytes = build_workbook(result.duplicate_records, result.from_date, result.to_date, POS_MODE)
+    assert len(wb_bytes) > 0
+    wb = load_workbook(io.BytesIO(wb_bytes))
+    assert len(wb.sheetnames) == 1
+
+
+def test_duplicate_records_empty_for_unique_data():
+    # When no two rows are identical, duplicate_records is empty.
+    result = merge_reports([("export.xlsx", _xlsx_export_style())])
+    assert result.total_rows == 3
+    assert len(result.duplicate_records) == 0
+
+
+def test_duplicate_records_populated_even_with_dedupe_on():
+    # duplicate_records are computed from the pre-dedupe data so they are
+    # available even when dedupe is True.
+    files = [
+        ("export.xlsx", _xlsx_export_style()),
+        ("export_copy.xlsx", _xlsx_export_style()),
+    ]
+    result = merge_reports(files, dedupe=True)
+    assert result.total_rows == 3  # deduped
+    assert len(result.duplicate_records) == 6  # pre-dedupe duplicates kept
+
+
+def test_duplicate_records_only_exact_match():
+    # Two files share one identical row and differ on the others. Only
+    # the shared row is a duplicate.
+    files = [
+        ("export.xlsx", _xlsx_export_style()),
+        ("decline42.xlsx", _xls_report_style()),
+    ]
+    result = merge_reports(files, dedupe=False)
+    assert len(result.duplicate_records) == 0  # no overlapping rows
+
+
 def test_merged_workbook_layout():
     result = merge_reports([("export.xlsx", _xlsx_export_style())])
     wb = load_workbook(io.BytesIO(result.workbook_bytes))

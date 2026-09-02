@@ -298,7 +298,7 @@ def _render_snapshot_page():
     s1, s2, s3 = st.columns(3)
     show_bars = s1.checkbox("Show metric bars", value=True, key="snap_bars")
     auto_hl = s2.checkbox("Auto-highlight highest average", value=True, key="snap_auto_hl")
-    takeaway_override = s3.text_input("Custom key takeaway (optional)", key="snap_takeaway")
+    takeaway_override = s3.text_input("Key takeaway (overrides auto)", key="snap_takeaway")
 
     services = []
     for idx, row in enumerate(edited.to_dict("records")):

@@ -4,7 +4,10 @@ Ported from digital-transaction-snapshot/public/js/app.js so the same
 module is available on the deployed Streamlit app without a Node server.
 """
 
+import base64
 import html as _html
+import os
+
 import pandas as pd
 
 REPORT_DEFAULTS = {
@@ -30,6 +33,53 @@ SERVICE_DEFAULTS = [
      "transactionVolume": 18406, "totalValue": 0, "keyMessage": "Non-financial service",
      "highlighted": False},
 ]
+
+_IMG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "snapshot")
+
+
+def _img_data_uri(filename):
+    """Return a base64 jpeg data URI for an image in static/snapshot, or ''."""
+    path = os.path.join(_IMG_DIR, filename)
+    try:
+        with open(path, "rb") as f:
+            return "data:image/jpeg;base64," + base64.b64encode(f.read()).decode("ascii")
+    except OSError:
+        return ""
+
+
+def _phone_mockup():
+    """Decorative CSS phone mockup: orange screen + QR-style pattern."""
+    return (
+        '<div class="phone" title="QR">'
+        '<div class="phone-screen">'
+        '<svg class="qr-deco" viewBox="0 0 21 21" aria-hidden="true">'
+        '<rect x="1" y="1" width="5" height="5" fill="#fff"/>'
+        '<rect x="2" y="2" width="3" height="3" fill="#F4511E"/>'
+        '<rect x="15" y="1" width="5" height="5" fill="#fff"/>'
+        '<rect x="16" y="2" width="3" height="3" fill="#F4511E"/>'
+        '<rect x="1" y="15" width="5" height="5" fill="#fff"/>'
+        '<rect x="2" y="16" width="3" height="3" fill="#F4511E"/>'
+        '<rect x="8" y="3" width="2" height="2" fill="#fff"/>'
+        '<rect x="11" y="2" width="2" height="1" fill="#fff"/>'
+        '<rect x="7" y="6" width="1" height="2" fill="#fff"/>'
+        '<rect x="13" y="6" width="2" height="1" fill="#fff"/>'
+        '<rect x="9" y="8" width="3" height="2" fill="#fff"/>'
+        '<rect x="5" y="9" width="2" height="1" fill="#fff"/>'
+        '<rect x="14" y="10" width="2" height="1" fill="#fff"/>'
+        '<rect x="7" y="12" width="2" height="1" fill="#fff"/>'
+        '<rect x="11" y="13" width="2" height="2" fill="#fff"/>'
+        '<rect x="3" y="13" width="2" height="1" fill="#fff"/>'
+        '<rect x="16" y="13" width="2" height="2" fill="#fff"/>'
+        '<rect x="8" y="16" width="2" height="1" fill="#fff"/>'
+        '<rect x="12" y="17" width="2" height="1" fill="#fff"/>'
+        '<rect x="5" y="17" width="1" height="2" fill="#fff"/>'
+        '<rect x="17" y="9" width="1" height="2" fill="#fff"/>'
+        '<rect x="4" y="8" width="2" height="1" fill="#fff"/>'
+        '<rect x="16" y="6" width="1" height="2" fill="#fff"/>'
+        '<rect x="9" y="15" width="2" height="1" fill="#fff"/>'
+        "</svg></div><div class='phone-notch'></div></div>"
+    )
+
 
 REPORT_CSS = """
 :root {
@@ -64,6 +114,16 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
   font-size: 11px; font-weight: 800; letter-spacing: .5px; color: #fff; }
 .org-name { font-size: 12px; font-weight: 700; letter-spacing: 1px; }
 .org-sub { font-size: 8px; color: rgba(255,255,255,.6); letter-spacing: .5px; text-transform: uppercase; }
+.org-logo { height: 34px; width: auto; border-radius: 4px; }
+.bird-logo { height: 30px; width: auto; border-radius: 4px; flex-shrink: 0; }
+.phone { width: 24px; height: 42px; background: #0B2A5B; border: 1.5px solid rgba(255,255,255,.35);
+  border-radius: 6px; padding: 3px; flex-shrink: 0; position: relative; }
+.phone-screen { width: 100%; height: 100%; border-radius: 3px; overflow: hidden;
+  background: linear-gradient(160deg, #F4511E 0%, #ff8a55 100%);
+  display: flex; align-items: center; justify-content: center; }
+.qr-deco { width: 15px; height: 15px; display: block; }
+.phone-notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 9px; height: 2px; background: rgba(255,255,255,.6); border-radius: 2px; }
 .brand-badge { display: inline-block; background: #F4511E; color: #fff; font-size: 10px;
   font-weight: 800; letter-spacing: 2px; padding: 2px 12px; border-radius: 3px; margin-bottom: 4px; }
 .report-title { font-size: 15px; font-weight: 900; letter-spacing: 2px;
@@ -111,22 +171,25 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .msg-badge { display: inline-block; background: #F4511E; color: #fff; font-size: 7px;
   font-weight: 700; letter-spacing: .8px; padding: 1px 6px; border-radius: 3px;
   text-transform: uppercase; margin-top: 2px; }
-.report-insights { display: grid; grid-template-columns: 1fr 1.3fr 1fr; border-top: 2px solid #0B2A5B; }
-.insight-card { padding: 10px 14px; border-right: 1px solid #e5e7eb; }
-.insight-card:last-child { border-right: none; }
-.insight-label { font-size: 7.5px; font-weight: 800; letter-spacing: 1.5px; color: #0B2A5B;
-  text-transform: uppercase; margin-bottom: 4px; }
-.insight-service { font-size: 14px; font-weight: 800; color: #0B2A5B; margin-bottom: 2px; }
-.insight-detail { font-size: 9px; color: #6b7280; line-height: 1.35; }
-.qr-avg-main { text-align: center; padding: 4px 0 6px; border-bottom: 1px solid #f0f0f0; margin-bottom: 6px; }
-.qr-avg-label { font-size: 6.5px; font-weight: 700; letter-spacing: 1px; color: #9ca3af; text-transform: uppercase; }
-.qr-avg-value { font-size: 18px; font-weight: 900; color: #F4511E; line-height: 1.3; }
-.qr-avg-sub { font-size: 8px; color: #9ca3af; }
+.report-insights { display: grid; grid-template-columns: 1fr 1.35fr 1.1fr; gap: 10px;
+  padding: 12px 14px 14px; background: #f6f8fc; border-top: 2px solid #0B2A5B; }
+.insight-card { border-radius: 10px; padding: 12px 14px; }
+.volume-leader-card { background: linear-gradient(135deg, #0B2A5B 0%, #1e3a6b 100%); }
+.qr-advantage-card { background: linear-gradient(135deg, #F4511E 0%, #ff7a3d 100%); }
+.takeaway-card { background: linear-gradient(135deg, #0b7a45 0%, #14a46b 100%); }
+.insight-label { font-size: 7.5px; font-weight: 800; letter-spacing: 1.5px;
+  color: rgba(255,255,255,.75); text-transform: uppercase; margin-bottom: 4px; }
+.insight-service { font-size: 14px; font-weight: 800; color: #fff; margin-bottom: 2px; }
+.insight-detail { font-size: 9px; color: rgba(255,255,255,.85); line-height: 1.35; }
+.qr-avg-main { text-align: center; padding: 4px 0 6px; border-bottom: 1px solid rgba(255,255,255,.3); margin-bottom: 6px; }
+.qr-avg-label { font-size: 6.5px; font-weight: 700; letter-spacing: 1px; color: rgba(255,255,255,.8); text-transform: uppercase; }
+.qr-avg-value { font-size: 18px; font-weight: 900; color: #fff; line-height: 1.3; }
+.qr-avg-sub { font-size: 8px; color: rgba(255,255,255,.75); }
 .qr-comparisons { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
 .qr-comp { text-align: center; }
-.qr-comp-multiplier { font-size: 14px; font-weight: 800; color: #0B2A5B; line-height: 1.2; }
-.qr-comp-label { font-size: 7px; color: #9ca3af; line-height: 1.2; }
-.takeaway-text { font-size: 9.5px; color: #4b5563; line-height: 1.5; }
+.qr-comp-multiplier { font-size: 14px; font-weight: 800; color: #fff; line-height: 1.2; }
+.qr-comp-label { font-size: 7px; color: rgba(255,255,255,.8); line-height: 1.2; }
+.takeaway-text { font-size: 9.5px; color: #fff; line-height: 1.5; }
 .report-footer { display: flex; align-items: center; justify-content: space-between;
   padding: 8px 20px; background: #0B2A5B; color: #fff; min-height: 34px; }
 .footer-org-name { font-size: 10px; font-weight: 700; letter-spacing: .5px; }
@@ -373,31 +436,36 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
         comparisons = '<div class="qr-comparisons">' + "".join(comps) + "</div>"
 
     insights = ('<div class="report-insights">'
-                '<div class="insight-card">'
+                '<div class="insight-card volume-leader-card">'
                 '<div class="insight-label">VOLUME LEADER</div>'
                 '<div class="insight-service">' + vl_name + "</div>"
                 '<div class="insight-detail">' + vl_detail + "</div></div>"
-                '<div class="insight-card">'
+                '<div class="insight-card qr-advantage-card">'
                 '<div class="insight-label">QR VALUE ADVANTAGE</div>'
                 '<div class="qr-avg-main"><div class="qr-avg-label">AVERAGE TRANSACTION VALUE</div>'
                 '<div class="qr-avg-value">' + qr_avg + '</div><div class="qr-avg-sub">per transaction</div></div>'
                 + comparisons + "</div>"
-                '<div class="insight-card">'
+                '<div class="insight-card takeaway-card">'
                 '<div class="insight-label">KEY TAKEAWAY</div>'
                 '<div class="takeaway-text">' + _esc(takeaway) + "</div></div>"
                 "</div>")
 
+    org_logo = _img_data_uri("ethswitch.jpg")
+    bird_logo = _img_data_uri("ethiopay-bird.jpg")
     header = ('<div class="report-header">'
               '<div class="header-left"><div class="org-badge">'
-              '<div class="org-icon">' + _initials(report.get("organization")) + "</div>"
+              '<img class="org-logo" src="' + org_logo + '" alt="' + _esc(report.get("organization")) + '">'
               '<div><div class="org-name">' + _esc(report.get("organization")) + "</div>"
               '<div class="org-sub">SWITCH COMPANY</div></div></div></div>'
               '<div class="header-center"><div class="brand-badge">' + _esc(report.get("brand")) + "</div>"
               '<h1 class="report-title">' + _esc(report.get("title")) + "</h1>"
               '<p class="report-subtitle">' + _esc(report.get("subtitle")) + "</p></div>"
-              '<div class="header-right"><div class="date-badge">'
-              '<span class="date-label">DATE</span>'
-              '<span class="date-value">' + _esc(report.get("date")) + "</span></div></div></div>")
+              '<div class="header-right">'
+              '<div class="date-badge"><span class="date-label">DATE</span>'
+              '<span class="date-value">' + _esc(report.get("date")) + "</span></div>"
+              + _phone_mockup() +
+              '<img class="bird-logo" src="' + bird_logo + '" alt="EthioPay">'
+              "</div></div>")
 
     footer = ('<div class="report-footer"><div>'
               '<span class="footer-org-name">' + _esc(report.get("organization")) + " S.C.</span>"

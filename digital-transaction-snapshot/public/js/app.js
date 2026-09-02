@@ -384,10 +384,10 @@
       }
     }
 
-    // Takeaway (respect custom override)
+    // Takeaway (use the user's Key Takeaway input when provided)
     var takeaway = calc.takeaway;
-    if (settings.takeawayMode === 'custom' && settings.takeawayOverride) {
-      takeaway = settings.takeawayOverride;
+    if (settings.takeawayOverride && settings.takeawayOverride.trim()) {
+      takeaway = settings.takeawayOverride.trim();
     }
     setText('takeaway-text', takeaway);
   }

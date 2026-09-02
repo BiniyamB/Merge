@@ -429,9 +429,12 @@ if st.session_state.merged_meta is None:
     dedupe = st.toggle(
         "Remove duplicate rows",
         value=False,
-        help="Keep only unique rows. A row is removed when it is duplicated in "
-             "every column (e.g. the same transaction appearing in more than one "
-             "file).",
+        help="Keep only the first occurrence of each identical row and remove the rest. "
+             "Two rows are considered duplicates when every column has the same value. "
+             "Example: if headers are Class | Age | Grade and rows are "
+             "A|17|5, B|17|7, A|17|5 — the third row is a duplicate of the first; "
+             "with this toggle on, only one A|17|5 row appears in the merged output. "
+             "The 'Download Duplicates' button always shows all rows involved, even when this is off.",
     )
 
     if st.button("Merge Reports", use_container_width=True):
@@ -488,7 +491,8 @@ meta = st.session_state.merged_meta
 st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-green">&#10003;</div><div><p class="card-title">Merged Report</p><p class="card-sub">All reports consolidated successfully</p></div></div>', unsafe_allow_html=True)
 
 ok_files = [p for p in meta["per_file"] if p["status"] == "ok"]
-c1, c2, c3, c4 = st.columns(4)
+dup_count = meta.get("duplicate_count", 0)
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Transactions", f"{meta['total_rows']:,}")
 if meta["from_date"] == meta["to_date"]:
     date_str = meta["from_date"]
@@ -497,6 +501,7 @@ else:
 c2.metric("Date Range", date_str)
 c3.metric("Files Merged", len(ok_files))
 c4.metric("Response Codes", len(meta["resp_counts"]))
+c5.metric("Duplicates Found", f"{dup_count:,}")
 
 _sort_by = meta.get("sort_by") or "date_time"
 if _sort_by == "date_time":

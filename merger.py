@@ -1154,20 +1154,42 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
     # like 20260813) still order correctly.
     records = [{col: rec.get(col, "") for col in mode.canonical_columns} for rec in all_rows]
 
-    # Build a key per record (values identical across every output column).
-    # This runs regardless of ``dedupe`` so the caller can always offer a
-    # "download only the duplicates" report.
+    # Build a fingerprint key per record by converting every output-column
+    # value to a string.  Empty cells (None, NaN, whitespace, "") all become
+    # the empty string so they compare equal regardless of their raw type.
+    #
+    # Example:
+    #   Headers : Class | Age | Grade
+    #   Row 1   :  A    |  17 |  5      key -> ("A", "17", "5")
+    #   Row 2   :  B    |  17 |  7      key -> ("B", "17", "7")
+    #   Row 3   :  A    |  17 |  5      key -> ("A", "17", "5")  <- same as Row 1
+    #
+    # key_counts after scanning all three rows:
+    #   ("A", "17", "5") -> 2   ("B", "17", "7") -> 1
+    #
+    # duplicate_records -> [Row 1, Row 3]   (both occurrences)
+    # After dedupe (if enabled) -> [Row 1, Row 2]   (first occurrence kept)
+    #
+    # This block always runs so the caller can offer a
+    # "download only the duplicates" report even when dedupe is off.
+    def _fingerprint(v: Any) -> str:
+        """Stable string key for a single cell value."""
+        if _is_empty(v):
+            return ""
+        return str(v)
+
     record_keys = [
-        tuple((_is_empty(v) and "") or str(v) for v in rec.values())
+        tuple(_fingerprint(v) for v in rec.values())
         for rec in records
     ]
     key_counts: dict[tuple, int] = {}
     for k in record_keys:
         key_counts[k] = key_counts.get(k, 0) + 1
 
-    # Rows that appear more than once across the whole merged input. Kept in
-    # source order and independent of dedupe, since these are exactly the rows
-    # a user would want when asking for "only the duplicates".
+    # Rows that appear more than once across the whole merged input.
+    # Both the first AND all subsequent occurrences are included so the user
+    # can see every instance that was involved in a duplication.
+    # (When dedupe=True only the first occurrence survives in ``records``.)
     duplicate_records = [
         rec for rec, k in zip(records, record_keys) if key_counts[k] > 1
     ]

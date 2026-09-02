@@ -365,6 +365,20 @@ function renderResults(data) {
   const dl = $("download-btn");
   dl.href = `/download/${data.token}`;
   dl.setAttribute("download", data.filename);
+
+  const dedupeBtn = $("dedupe-download-btn");
+  const dedupeBadge = $("dedupe-count-badge");
+  if (data.duplicate_count > 0) {
+    dedupeBtn.href = `/download-duplicates/${data.token}`;
+    dedupeBtn.setAttribute("download", data.filename.replace(/_Merged\.xlsx$/, "_Duplicates.xlsx"));
+    dedupeBadge.textContent = data.duplicate_count;
+    dedupeBtn.classList.remove("hidden");
+  } else {
+    dedupeBtn.classList.add("hidden");
+    dedupeBtn.href = "";
+    dedupeBadge.textContent = "";
+  }
+
   initFilterPanel(data);
 }
 

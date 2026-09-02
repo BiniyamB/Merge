@@ -14,14 +14,15 @@ from io import BytesIO
 from flask import Flask, jsonify, render_template, request, send_file
 
 from collections import Counter
-from merger import MODES, MergeResult, merge_reports, build_filtered_workbook
+from merger import MODES, MergeResult, merge_reports, build_filtered_workbook, build_workbook
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # 64 MB request cap
 
 # In-memory cache of generated workbooks:
-# token -> (created_at, filename, bytes, records, columns, mode_key)
-_CACHE: dict[str, tuple[float, str, bytes, list, list, str]] = {}
+# token -> (created_at, filename, bytes, records, columns, mode_key,
+#           duplicate_records)
+_CACHE: dict[str, tuple[float, str, bytes, list, list, str, list]] = {}
 _CACHE_TTL_SECONDS = 30 * 60
 _MAX_FILES = 50
 _MAX_BYTES_PER_FILE = 50 * 1024 * 1024
@@ -85,6 +86,7 @@ def merge():
         result.records,
         list(result.records[0].keys()) if result.records else [],
         result.mode_key,
+        result.duplicate_records,
     )
     _sweep_cache()
 
@@ -107,6 +109,7 @@ def merge():
             "mode_label": result.mode_label,
             "columns": list(result.records[0].keys()) if result.records else [],
             "total_rows": result.total_rows,
+            "duplicate_count": len(result.duplicate_records),
             "from_date": result.from_date,
             "to_date": result.to_date,
             "per_file": result.per_file,
@@ -140,9 +143,44 @@ def download(token: str):
     )
 
 
+@app.get("/download-duplicates/<token>")
+def download_duplicates(token: str):
+    """Serve a workbook containing only the fully-duplicate rows."""
+    entry = _CACHE.get(token)
+    if entry is None:
+        return (
+            "The merged report is no longer available - it is kept only in memory "
+            "and expires after 30 minutes. Please merge again.",
+            404,
+        )
+    _, _, _, records, columns, mode_key, duplicate_records = entry
+    if not duplicate_records:
+        return jsonify({"error": "No duplicate rows were found in the merged data."}), 400
+
+    mode = MODES.get(mode_key)
+    if mode is None:
+        return jsonify({"error": f"Unknown mode '{mode_key}'."}), 500
+
+    from_date, to_date = "", ""
+    try:
+        wb_bytes = build_workbook(duplicate_records, from_date, to_date, mode)
+    except Exception as exc:
+        return jsonify({"error": f"Failed to build duplicates workbook: {exc}"}), 500
+
+    base = mode.output_prefix
+    out_name = f"{base}_Duplicates.xlsx"
+    return send_file(
+        BytesIO(wb_bytes),
+        as_attachment=True,
+        download_name=out_name,
+        mimetype=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+
+
 @app.post("/filter-download")
 def filter_download():
-    """Build and return a multi-sheet workbook from filter definitions."""
     token = request.form.get("token") or (request.get_json(silent=True) or {}).get("token")
     if not token:
         return jsonify({"error": "Missing token."}), 400
@@ -151,7 +189,7 @@ def filter_download():
     if entry is None:
         return jsonify({"error": "Merge result expired. Please merge again."}), 404
 
-    _, _, _, records, columns, mode_key = entry
+    _, _, _, records, columns, mode_key, _ = entry
     mode = MODES.get(mode_key)
     if mode is None:
         return jsonify({"error": f"Unknown mode '{mode_key}'."}), 500

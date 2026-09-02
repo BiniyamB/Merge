@@ -623,6 +623,33 @@ code {
 }
 .btn-download:active { transform: translateY(0); transition-duration: 0.1s; }
 
+.btn-dedupe-download {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #422006;
+  box-shadow: 0 4px 24px rgba(245, 158, 11, 0.2);
+}
+.btn-dedupe-download:hover {
+  box-shadow: 0 6px 32px rgba(245, 158, 11, 0.35);
+  transform: translateY(-2px);
+}
+.btn-dedupe-download:active { transform: translateY(0); transition-duration: 0.1s; }
+.btn-dedupe-download.hidden { display: none; }
+
+.btn-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.15);
+  color: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  margin-left: 4px;
+}
+
 .btn-arrow {
   transition: transform 0.25s var(--ease);
 }

@@ -1087,6 +1087,7 @@ class MergeResult:
     workbook_bytes: bytes
     sort_by: str = ""
     sort_dir: str = "asc"
+    duplicate_records: list = field(default_factory=list)
 
 
 def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
@@ -1118,7 +1119,10 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
     identical across every output column are collapsed to a single row (the
     first occurrence is kept). When False (the default) all rows are kept.
     Deduplication is applied *before* sorting, so the surviving row keeps its
-    position relative to the other rows.
+    position relative to the other rows. Regardless of ``dedupe`` the result
+    also carries ``duplicate_records`` - the rows that appear more than once
+    in the merged input (i.e. exactly the rows ``dedupe`` would collapse) -
+    so the caller can offer a "download only the duplicates" report.
     """
     mode = MODES.get(mode_key)
     if mode is None:
@@ -1150,19 +1154,34 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
     # like 20260813) still order correctly.
     records = [{col: rec.get(col, "") for col in mode.canonical_columns} for rec in all_rows]
 
+    # Build a key per record (values identical across every output column).
+    # This runs regardless of ``dedupe`` so the caller can always offer a
+    # "download only the duplicates" report.
+    record_keys = [
+        tuple((_is_empty(v) and "") or str(v) for v in rec.values())
+        for rec in records
+    ]
+    key_counts: dict[tuple, int] = {}
+    for k in record_keys:
+        key_counts[k] = key_counts.get(k, 0) + 1
+
+    # Rows that appear more than once across the whole merged input. Kept in
+    # source order and independent of dedupe, since these are exactly the rows
+    # a user would want when asking for "only the duplicates".
+    duplicate_records = [
+        rec for rec, k in zip(records, record_keys) if key_counts[k] > 1
+    ]
+
     if dedupe:
         # Collapse fully-duplicate rows (identical values in EVERY column) to
         # one row, keeping the first occurrence. Only the merged output is
         # affected; per-report counts are reported as they were read.
         seen: set = set()
         unique_records: list[dict] = []
-        for rec in records:
-            key = tuple(
-                (_is_empty(v) and "") or str(v) for v in rec.values()
-            )
-            if key in seen:
+        for rec, k in zip(records, record_keys):
+            if k in seen:
                 continue
-            seen.add(key)
+            seen.add(k)
             unique_records.append(rec)
         records = unique_records
 
@@ -1252,6 +1271,7 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
         total_rows=len(records),
         per_file=per_file,
         records=records,
+        duplicate_records=duplicate_records,
         resp_counts=resp_counts,
         warnings=warnings,
         mode_key=mode.key,

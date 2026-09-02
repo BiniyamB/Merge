@@ -233,6 +233,7 @@ for key, default in [
     ("pending_filters", {}),
     ("unique_values_cache", {}),
     ("snap_page", False),
+    ("duplicate_records", []),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -370,6 +371,7 @@ for i, opt in enumerate(mode_options):
             st.session_state.filter_sheets = []
             st.session_state.records = []
             st.session_state.columns = []
+            st.session_state.duplicate_records = []
             st.session_state.unique_values_cache = {}
             gc.collect()
 
@@ -464,6 +466,7 @@ if st.session_state.merged_meta is None:
             "from_date": result.from_date,
             "to_date": result.to_date,
             "total_rows": result.total_rows,
+            "duplicate_count": len(result.duplicate_records),
             "per_file": result.per_file,
             "resp_counts": result.resp_counts,
             "warnings": result.warnings,
@@ -472,6 +475,7 @@ if st.session_state.merged_meta is None:
             "sort_by": result.sort_by,
             "sort_dir": result.sort_dir,
         }
+        st.session_state.duplicate_records = result.duplicate_records
         del result, payloads
         gc.collect()
         st.rerun()
@@ -530,24 +534,52 @@ st.dataframe(preview_df, use_container_width=True, hide_index=True, height=380)
 
 # Download merged — generate workbook on demand (NOT stored in session state)
 st.markdown('<div class="section-sep"><span>Download</span></div>', unsafe_allow_html=True)
-if st.button("Download Merged Report", use_container_width=True, key="dl_merged"):
-    with st.spinner("Building workbook..."):
-        wb_bytes = build_workbook(
-            st.session_state.records,
-            meta["from_date"],
-            meta["to_date"],
-            MODES[meta["mode_key"]],
+col_dl1, col_dl2 = st.columns(2)
+
+with col_dl1:
+    if st.button("Download Merged Report", use_container_width=True, key="dl_merged"):
+        with st.spinner("Building workbook..."):
+            wb_bytes = build_workbook(
+                st.session_state.records,
+                meta["from_date"],
+                meta["to_date"],
+                MODES[meta["mode_key"]],
+            )
+        st.download_button(
+            label="Click to save",
+            data=wb_bytes,
+            file_name=meta["filename"],
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="dl_merged_actual",
         )
-    st.download_button(
-        label="Click to save",
-        data=wb_bytes,
-        file_name=meta["filename"],
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-        key="dl_merged_actual",
-    )
-    del wb_bytes
-    gc.collect()
+        del wb_bytes
+        gc.collect()
+
+with col_dl2:
+    dup_count = meta.get("duplicate_count", 0)
+    if dup_count > 0:
+        if st.button(f"Download Duplicates Only ({dup_count:,} rows)", use_container_width=True, key="dl_dupes"):
+            with st.spinner("Building duplicates workbook..."):
+                dup_wb = build_workbook(
+                    st.session_state.duplicate_records,
+                    "",
+                    "",
+                    MODES[meta["mode_key"]],
+                )
+            dup_filename = meta["filename"].replace("_Merged.xlsx", "_Duplicates.xlsx")
+            st.download_button(
+                label="Click to save duplicates",
+                data=dup_wb,
+                file_name=dup_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dl_dupes_actual",
+            )
+            del dup_wb
+            gc.collect()
+    else:
+        st.button("No Duplicates to Download", use_container_width=True, disabled=True, key="dl_dupes_disabled")
 
 st.markdown('</div>', unsafe_allow_html=True)
 

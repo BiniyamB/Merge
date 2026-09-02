@@ -1091,7 +1091,7 @@ class MergeResult:
 
 def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
                    skip_workbook: bool = False, sort_by: str = "",
-                   sort_dir: str = "asc") -> MergeResult:
+                   sort_dir: str = "asc", dedupe: bool = False) -> MergeResult:
     """Merge any number of (filename, bytes) reports into one workbook.
 
     ``mode_key`` selects the report type: "pos_decline" (POS decline
@@ -1113,6 +1113,12 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
     altered - only an internal smart sort key is used, so dates written with
     spelled months ('15-Aug-26') and numeric dates (20260813) sort together
     correctly.
+
+    ``dedupe`` when True removes fully-duplicate rows - rows whose values are
+    identical across every output column are collapsed to a single row (the
+    first occurrence is kept). When False (the default) all rows are kept.
+    Deduplication is applied *before* sorting, so the surviving row keeps its
+    position relative to the other rows.
     """
     mode = MODES.get(mode_key)
     if mode is None:
@@ -1143,6 +1149,22 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
     # (e.g. "115207" vs "01:20:54" or dates spelled as 'Aug 13' vs numbers
     # like 20260813) still order correctly.
     records = [{col: rec.get(col, "") for col in mode.canonical_columns} for rec in all_rows]
+
+    if dedupe:
+        # Collapse fully-duplicate rows (identical values in EVERY column) to
+        # one row, keeping the first occurrence. Only the merged output is
+        # affected; per-report counts are reported as they were read.
+        seen: set = set()
+        unique_records: list[dict] = []
+        for rec in records:
+            key = tuple(
+                (_is_empty(v) and "") or str(v) for v in rec.values()
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_records.append(rec)
+        records = unique_records
 
     if sort_by in ("", "date_time", "date"):
         # default: sort by date (spelled months or numbers), then time

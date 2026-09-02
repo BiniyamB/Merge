@@ -134,6 +134,44 @@ def test_merge_two_reports():
         assert list(rec.keys()) == CANONICAL_COLUMNS
 
 
+def test_merge_dedupe_keeps_only_unique_rows():
+    # Merging the same file twice (identical rows) with dedupe off doubles
+    # every row; with dedupe on the fully-duplicated rows are collapsed.
+    files = [
+        ("export.xlsx", _xlsx_export_style()),
+        ("export_copy.xlsx", _xlsx_export_style()),
+    ]
+    result_keep = merge_reports(files, dedupe=False)
+    assert result_keep.total_rows == 6  # 3 rows x 2 files
+
+    result_unique = merge_reports(files, dedupe=True)
+    assert result_unique.total_rows == 3  # exact duplicates collapsed
+
+    # The surviving rows are exactly the original 3, and values are preserved.
+    assert result_unique.records[0]["ACQUIRER"] == "Commercial Bank"
+    assert result_unique.records[0]["TIME"] == "01:20:54"
+    assert result_unique.records[1]["TIME"] == "02:41:14"
+    assert result_unique.records[2]["TIME"] == "02:42:03"
+    # every record has exactly the 12 canonical keys
+    for rec in result_unique.records:
+        assert list(rec.keys()) == CANONICAL_COLUMNS
+
+
+def test_merge_dedupe_ignores_single_occurrence_rows():
+    # Rows that differ in any column are not removed even when duplicates
+    # exist elsewhere. The two files share one identical row and differ on
+    # the others, so only that shared row is collapsed.
+    files = [
+        ("export.xlsx", _xlsx_export_style()),
+        ("decline42.xlsx", _xls_report_style()),
+    ]
+    result_keep = merge_reports(files, dedupe=False)
+    assert result_keep.total_rows == 6
+
+    result_unique = merge_reports(files, dedupe=True)
+    assert result_unique.total_rows == 6  # no overlapping identical rows
+
+
 def test_merged_workbook_layout():
     result = merge_reports([("export.xlsx", _xlsx_export_style())])
     wb = load_workbook(io.BytesIO(result.workbook_bytes))

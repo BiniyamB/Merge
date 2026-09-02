@@ -1021,6 +1021,35 @@ footer {
   flex: 1;
 }
 
+.dedupe-group {
+  min-width: 220px;
+}
+
+.check-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #c9d3ee;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.check-option:hover {
+  border-color: rgba(168, 85, 247, 0.3);
+  background: rgba(168, 85, 247, 0.04);
+}
+.check-option input {
+  width: 15px;
+  height: 15px;
+  accent-color: #a855f7;
+  cursor: pointer;
+}
+
 .btn-add-sheet {
   display: inline-flex;
   align-items: center;

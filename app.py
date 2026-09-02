@@ -49,6 +49,8 @@ def merge():
     if sort_dir not in ("asc", "desc"):
         sort_dir = "asc"
 
+    dedupe = request.form.get("dedupe", "") in ("1", "true", "on", "yes")
+
     uploads = [f for f in request.files.getlist("files") if f and f.filename]
     if not uploads:
         return jsonify({"error": "No files were uploaded."}), 400
@@ -70,6 +72,7 @@ def merge():
             mode_key=mode_key,
             sort_by=sort_by,
             sort_dir=sort_dir,
+            dedupe=dedupe,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400

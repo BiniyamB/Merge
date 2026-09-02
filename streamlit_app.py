@@ -424,6 +424,14 @@ if st.session_state.merged_meta is None:
     sort_dir = st.radio("Direction", ["asc", "desc"], horizontal=True,
                         format_func=lambda d: "Ascending" if d == "asc" else "Descending")
 
+    dedupe = st.toggle(
+        "Remove duplicate rows",
+        value=False,
+        help="Keep only unique rows. A row is removed when it is duplicated in "
+             "every column (e.g. the same transaction appearing in more than one "
+             "file).",
+    )
+
     if st.button("Merge Reports", use_container_width=True):
         with st.spinner("Merging reports..."):
             try:
@@ -434,6 +442,7 @@ if st.session_state.merged_meta is None:
                     skip_workbook=True,
                     sort_by=sort_by,
                     sort_dir=sort_dir,
+                    dedupe=dedupe,
                 )
             except MemoryError:
                 st.error("Not enough memory to process these files. Try uploading smaller files or fewer at a time.")

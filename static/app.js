@@ -317,6 +317,7 @@ async function merge() {
   formData.append("mode", state.mode);
   formData.append("sort_by", $("sort-col").value || "date_time");
   formData.append("sort_dir", $("sort-dir").value || "asc");
+  formData.append("dedupe", $("dedupe") && $("dedupe").checked ? "1" : "0");
 
   try {
     const res = await fetch("/merge", { method: "POST", body: formData });

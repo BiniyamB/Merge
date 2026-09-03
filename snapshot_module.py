@@ -21,17 +21,27 @@ REPORT_DEFAULTS = {
 }
 
 SERVICE_DEFAULTS = [
+    {"name": "ATM SUCCESS RATE", "type": "success-rate", "transactionVolume": 98.7,
+     "totalValue": 0, "target": 0, "keyMessage": "ATM success rate", "highlighted": False},
+    {"name": "POS SUCCESS RATE", "type": "success-rate", "transactionVolume": 97.5,
+     "totalValue": 0, "target": 0, "keyMessage": "POS success rate", "highlighted": False},
+    {"name": "P2P SUCCESS RATE", "type": "success-rate", "transactionVolume": 99.1,
+     "totalValue": 0, "target": 0, "keyMessage": "P2P success rate", "highlighted": False},
     {"name": "CASH WITHDRAWAL", "type": "financial", "transactionVolume": 306455,
-     "totalValue": 455114740.00, "keyMessage": "Lower-value transactions", "highlighted": False},
+     "totalValue": 455114740.00, "target": 340000, "keyMessage": "Lower-value transactions", "highlighted": False},
     {"name": "POS PURCHASE", "type": "financial", "transactionVolume": 10189,
-     "totalValue": 33248484.72, "keyMessage": "Moderate transaction value", "highlighted": False},
+     "totalValue": 33248484.72, "target": 12000, "keyMessage": "Moderate transaction value", "highlighted": False},
     {"name": "IPS P2P", "type": "financial", "transactionVolume": 926648,
-     "totalValue": 4049226900.62, "keyMessage": "Volume leader and value driver", "highlighted": False},
+     "totalValue": 4049226900.62, "target": 1000000, "keyMessage": "Volume leader and value driver", "highlighted": False},
     {"name": "QR", "type": "financial", "transactionVolume": 30248,
-     "totalValue": 268061663.69, "keyMessage": "", "highlighted": True},
+     "totalValue": 268061663.69, "target": 35000, "keyMessage": "", "highlighted": True},
     {"name": "BALANCE INQUIRY & MINI STATEMENT", "type": "non-financial",
-     "transactionVolume": 18406, "totalValue": 0, "keyMessage": "Non-financial service",
+     "transactionVolume": 18406, "totalValue": 0, "target": 20000, "keyMessage": "Non-financial service",
      "highlighted": False},
+    {"name": "RTP", "type": "financial", "transactionVolume": 5400,
+     "totalValue": 1850000000.00, "target": 6000, "keyMessage": "", "highlighted": False},
+    {"name": "NPG (CARD AND ONLINE)", "type": "financial", "transactionVolume": 21203,
+     "totalValue": 6925000000.00, "target": 25000, "keyMessage": "", "highlighted": False},
 ]
 
 _IMG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "snapshot")
@@ -157,11 +167,13 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .th-icon-green { background: #2f9e62; }
 .th-icon-teal { background: #156e8a; }
 .th-icon svg { width: 9px; height: 9px; }
-.th-service { width: 19%; }
-.th-volume { width: 20%; text-align: right; }
-.th-value { width: 21%; text-align: right; }
-.th-avg { width: 24%; text-align: right; }
-.th-message { width: 16%; text-align: left; }
+.th-service { width: 17%; }
+.th-volume { width: 12%; text-align: right; }
+.th-target { width: 13%; text-align: right; }
+.th-ach { width: 12%; text-align: right; }
+.th-value { width: 15%; text-align: right; }
+.th-avg { width: 18%; text-align: right; }
+.th-message { width: 13%; text-align: left; }
 .report-table td { padding: 14px 12px; vertical-align: middle; border-bottom: 1px solid #f0f0f0; height: 84px; }
 .report-table tbody tr:last-child td { border-bottom: none; }
 .report-table tbody tr:nth-child(even) { background: #fafbfc; }
@@ -186,6 +198,8 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .num-primary { font-weight: 700; font-size: 12px; color: #0B2A5B; line-height: 1.2; }
 .highlight-row .num-primary { color: #F4511E; }
 .num-dash { color: #9ca3af; font-style: italic; }
+.num-total { color: #F4511E; font-weight: 800; }
+.report-table tbody tr.total-row td { background: #eef3fb; border-top: 2px solid #0B2A5B; font-weight: 800; color: #0B2A5B; }
 .metric-bar-wrap { margin-top: 3px; }
 .metric-bar { height: 3px; border-radius: 2px; background: #d9e2f0; overflow: hidden; }
 .metric-bar-fill { height: 100%; border-radius: 2px; background: #416eb4; transition: width .4s ease; }
@@ -269,6 +283,12 @@ def _icon(name):
         return "qr-code"
     if "BALANCE" in n or "INQUIRY" in n or "MINI" in n:
         return "landmark"
+    if "RTP" in n:
+        return "arrow-left-right"
+    if "NPG" in n or "ONLINE" in n:
+        return "globe"
+    if "SUCCESS RATE" in n:
+        return "percent"
     return "circle-dot"
 
 
@@ -284,6 +304,10 @@ def _icon_class(name):
         return "qr"
     if "BALANCE" in n or "INQUIRY" in n or "MINI" in n:
         return "landmark"
+    if "RTP" in n or "NPG" in n or "ONLINE" in n:
+        return "landmark"
+    if "SUCCESS RATE" in n:
+        return "pos"
     return "default"
 
 
@@ -313,27 +337,40 @@ def _esc(text):
     return _html.escape(str(text if text is not None else ""))
 
 
+def _is_success_rate(s):
+    return s.get("type") == "success-rate" or "SUCCESS RATE" in (s.get("name") or "").upper()
+
+
 def calc_all(services):
     """Mirror of app.js calcAll()."""
     enriched = []
     for idx, s in enumerate(services):
         vol = max(0, _num(s.get("transactionVolume")))
         val = max(0, _num(s.get("totalValue")))
+        target = max(0, _num(s.get("target")))
+        is_rate = _is_success_rate(s)
         is_fin = s.get("type") == "financial" and val > 0
         avg = (val / vol) if (is_fin and vol > 0) else 0
+        ach = None
+        if not is_rate and target > 0:
+            ach = (vol / target) * 100
         enriched.append({
             "uid": s.get("uid") or f"row_{idx}",
             "name": s.get("name") or f"Service {idx + 1}",
             "type": s.get("type") or "financial",
             "transactionVolume": vol,
             "totalValue": val,
+            "target": target,
             "keyMessage": s.get("keyMessage") or "",
             "highlighted": _bool(s.get("highlighted")),
             "isFinancial": is_fin,
+            "isSuccessRate": is_rate,
+            "achievementPercent": ach,
             "averageTransactionValue": avg,
         })
 
-    max_vol = max((x["transactionVolume"] for x in enriched), default=0)
+    countables = [x for x in enriched if not x["isSuccessRate"]]
+    max_vol = max((x["transactionVolume"] for x in countables), default=0)
     feas = [x for x in enriched if x["isFinancial"]]
     max_avg = max((x["averageTransactionValue"] for x in feas), default=0)
     for x in enriched:
@@ -372,6 +409,13 @@ def calc_all(services):
         if highest_avg and highest_avg.get("name") == qr.get("name"):
             qr["keyMessage"] = "HIGHEST average transaction value"
 
+    total = {
+        "performance": sum(x["transactionVolume"] for x in countables),
+        "target": sum(x["target"] for x in countables),
+        "totalValue": sum(x["totalValue"] for x in countables),
+    }
+    total["achievementPercent"] = (total["performance"] / total["target"] * 100) if total["target"] > 0 else None
+
     return {
         "services": enriched,
         "volumeLeader": volume_leader,
@@ -380,6 +424,7 @@ def calc_all(services):
         "qr": qr,
         "qrAdvantages": qr_advantages,
         "takeaway": _takeaway(qr, volume_leader, feas),
+        "total": total,
     }
 
 
@@ -419,11 +464,12 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
 
     rows = []
     for s in services:
-        is_highest = highest_avg_name and highest_avg_name == s["name"]
+        is_rate = s["isSuccessRate"]
+        is_highest = (not is_rate) and highest_avg_name and highest_avg_name == s["name"]
         effective_h1 = s["highlighted"] or (auto_highlight and is_highest)
         tr_class = ' class="highlight-row"' if effective_h1 else ""
 
-        icon_class = "financial" if s["isFinancial"] else "non-financial"
+        icon_class = "financial" if (s["isFinancial"] and not is_rate) else "non-financial"
         svc = ('<td><div class="svc-cell"><div class="svc-icon ' + icon_class + ' ' + _icon_class(s["name"]) + '">'
                '<i data-lucide="' + _icon(s["name"]) + '"></i></div>'
                '<span class="svc-name">' + _esc(s["name"]) + "</span></div></td>")
@@ -433,7 +479,18 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
              '<div class="metric-bar-fill" style="width:' + f"{pct:.1f}" + '%"></div></div></div>')
             if show_bars else "")
 
-        vol = ('<div class="num-primary">' + fmt_int(s["transactionVolume"]) + "</div>" + bar(s["volumePercent"]))
+        if is_rate:
+            perf = ('<div class="num-primary">' + (fmt_dec(s["transactionVolume"]) + "%" if s["transactionVolume"] > 0
+                                                   else '<span class="num-dash">-</span>') + "</div>")
+        else:
+            perf = ('<div class="num-primary">' + fmt_int(s["transactionVolume"]) + "</div>" + bar(s["volumePercent"]))
+        target = ('<div class="num-primary">' + (fmt_int(s["target"]) if (not is_rate and s["target"] > 0)
+                                                 else '<span class="num-dash">-</span>') + "</div>")
+        if is_rate or s["achievementPercent"] is None:
+            ach = '<span class="num-dash">-</span>'
+        else:
+            ach = f"{s['achievementPercent']:.2f}%"
+        ach = '<div class="num-primary">' + ach + "</div>"
         tot = ('<div class="num-primary">' + ("ETB " + fmt_dec(s["totalValue"]) if s["isFinancial"]
                                               else '<span class="num-dash">-</span>') + "</div>")
         avg = ('<div class="num-primary">' + ("ETB " + fmt_dec(s["averageTransactionValue"]) if s["isFinancial"]
@@ -447,23 +504,43 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
         key_msg = ('<td class="msg-cell ' + msg + '">' + _esc(s["keyMessage"]) + badge + "</td>")
 
         rows.append("<tr" + tr_class + ">" + svc
-                    + '<td class="num-cell">' + vol + "</td>"
+                    + '<td class="num-cell">' + perf + "</td>"
+                    + '<td class="num-cell">' + target + "</td>"
+                    + '<td class="num-cell">' + ach + "</td>"
                     + '<td class="num-cell">' + tot + "</td>"
                     + '<td class="num-cell">' + avg + "</td>"
                     + key_msg + "</tr>")
+
+    tot = calc["total"]
+    if tot["achievementPercent"] is None:
+        tot_ach = '<span class="num-dash">-</span>'
+    else:
+        tot_ach = f"{tot['achievementPercent']:.2f}%"
+    total_row = ('<tr class="total-row">'
+                 '<td><div class="svc-cell"><span class="svc-name">TOTAL</span></div></td>'
+                 '<td class="num-cell"><div class="num-primary num-total">' + fmt_int(tot["performance"]) + "</div></td>"
+                 '<td class="num-cell"><div class="num-primary num-total">' + fmt_int(tot["target"]) + "</div></td>"
+                 '<td class="num-cell"><div class="num-primary num-total">' + tot_ach + "</div></td>"
+                 '<td class="num-cell"><div class="num-primary num-total">ETB ' + fmt_dec(tot["totalValue"]) + "</div></td>"
+                 '<td class="num-cell"><div class="num-dash">-</div></td>'
+                 '<td class="msg-cell"></td></tr>')
 
     table = ('<div class="report-table-wrapper"><table class="report-table"><thead><tr>'
              '<th class="th-service"><span class="th-inner"><span class="th-icon th-icon-blue">'
              '<i data-lucide="list"></i></span>SERVICE</span></th>'
              '<th class="th-volume"><span class="th-inner th-num"><span class="th-icon th-icon-purple">'
-             '<i data-lucide="hash"></i></span>TRANSACTION VOLUME</span></th>'
+             '<i data-lucide="hash"></i></span>PERFORMANCE</span></th>'
+             '<th class="th-target"><span class="th-inner th-num"><span class="th-icon th-icon-purple">'
+             '<i data-lucide="target"></i></span>MONTHLY PLAN (TARGET)</span></th>'
+             '<th class="th-ach"><span class="th-inner th-num"><span class="th-icon th-icon-green">'
+             '<i data-lucide="trending-up"></i></span>ACHIEVEMENT %</span></th>'
              '<th class="th-value"><span class="th-inner th-num"><span class="th-icon th-icon-teal">'
              '<i data-lucide="wallet"></i></span>TOTAL VALUE (ETB)</span></th>'
              '<th class="th-avg"><span class="th-inner th-num"><span class="th-icon th-icon-green">'
              '<i data-lucide="trending-up"></i></span>AVG TRANSACTION VALUE (ETB)</span></th>'
              '<th class="th-message"><span class="th-inner"><span class="th-icon th-icon-purple">'
              '<i data-lucide="message-square"></i></span>KEY MESSAGE</span></th>'
-             "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>")
+             "</tr></thead><tbody>" + "".join(rows) + total_row + "</tbody></table></div>")
 
     leader = calc["volumeLeader"]
     vl_name = _esc(leader["name"]) if leader else "-"

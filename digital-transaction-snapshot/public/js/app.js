@@ -86,19 +86,23 @@
     cards.forEach(function (card, idx) {
       const volInput = card.querySelector('[data-field="transactionVolume"]');
       const valInput = card.querySelector('[data-field="totalValue"]');
+      const targetInput = card.querySelector('[data-field="target"]');
       const hlCheckbox = card.querySelector('[data-field="highlighted"]');
 
       const volume = parseNum(volInput ? volInput.value : '0');
       const totalVal = parseNum(valInput ? valInput.value : '0');
+      const target = parseNum(targetInput ? targetInput.value : '0');
       const typeEl = card.querySelector('[data-field="type"]');
+      const type = typeEl ? typeEl.value : 'financial';
 
       services.push({
         id: card.dataset.id || 'svc-' + idx,
         name: (card.querySelector('[data-field="name"]') || {}).value || 'Service ' + (idx + 1),
         icon: getServiceIcon(card.querySelector('[data-field="name"]') ? card.querySelector('[data-field="name"]').value : ''),
-        type: typeEl ? typeEl.value : 'financial',
+        type: type,
         transactionVolume: volume,
         totalValue: totalVal,
+        target: target,
         keyMessage: (card.querySelector('[data-field="keyMessage"]') || {}).value || '',
         highlighted: hlCheckbox ? hlCheckbox.checked : false,
         highlightStyle: ''
@@ -114,6 +118,9 @@
     if (n.indexOf('P2P') >= 0 || n.indexOf('IPS') >= 0) return 'users';
     if (n.indexOf('QR') >= 0) return 'qr-code';
     if (n.indexOf('BALANCE') >= 0 || n.indexOf('INQUIRY') >= 0 || n.indexOf('MINI') >= 0) return 'landmark';
+    if (n.indexOf('RTP') >= 0) return 'arrow-left-right';
+    if (n.indexOf('NPG') >= 0 || n.indexOf('ONLINE') >= 0) return 'globe';
+    if (n.indexOf('SUCCESS RATE') >= 0) return 'percent';
     return 'circle-dot';
   }
 
@@ -124,6 +131,8 @@
     if (n.indexOf('P2P') >= 0 || n.indexOf('IPS') >= 0) return 'p2p';
     if (n.indexOf('QR') >= 0) return 'qr';
     if (n.indexOf('BALANCE') >= 0 || n.indexOf('INQUIRY') >= 0 || n.indexOf('MINI') >= 0) return 'landmark';
+    if (n.indexOf('RTP') >= 0 || n.indexOf('NPG') >= 0 || n.indexOf('ONLINE') >= 0) return 'landmark';
+    if (n.indexOf('SUCCESS RATE') >= 0) return 'pos';
     return 'default';
   }
 
@@ -151,6 +160,10 @@
   }
 
   // ---- CALCULATIONS ----
+  function isSuccessRate(s) {
+    return (s.type === 'success-rate') || /SUCCESS RATE/i.test((s.name || ''));
+  }
+
   function calcService(s) {
     var avg = 0;
     if (s.type === 'financial' && s.transactionVolume > 0 && s.totalValue > 0) {
@@ -158,7 +171,13 @@
     }
     return {
       avgTransactionValue: avg,
-      isFinancial: s.type === 'financial' && s.totalValue > 0
+      isFinancial: s.type === 'financial' && s.totalValue > 0,
+      isSuccessRate: isSuccessRate(s),
+      achievementPercent: (s.type === 'financial' && s.target > 0)
+        ? (s.transactionVolume / s.target) * 100
+        : (s.type === 'non-financial' && s.target > 0)
+          ? (s.transactionVolume / s.target) * 100
+          : null
     };
   }
 
@@ -167,11 +186,13 @@
       var c = calcService(s);
       return Object.assign({}, s, {
         averageTransactionValue: c.avgTransactionValue,
-        isFinancial: c.isFinancial
+        isFinancial: c.isFinancial,
+        isSuccessRate: c.isSuccessRate,
+        achievementPercent: c.achievementPercent
       });
     });
 
-    var maxVolume = Math.max.apply(null, enriched.map(function (s) { return s.transactionVolume || 0; }));
+    var maxVolume = Math.max.apply(null, enriched.filter(function (s) { return !s.isSuccessRate; }).map(function (s) { return s.transactionVolume || 0; }));
     var maxAvg = Math.max.apply(null, enriched.filter(function (s) { return s.isFinancial; }).map(function (s) { return s.averageTransactionValue; }));
 
     enriched.forEach(function (s) {
@@ -234,6 +255,17 @@
     // Dynamic key takeaway
     var takeaway = generateTakeaway(enriched, qr, volumeLeader, highestAvg);
 
+    // Total row (excludes success-rate rows - they are percentages)
+    var total = enriched.reduce(function (acc, s) {
+      if (s.isSuccessRate) return acc;
+      acc.performance += s.transactionVolume || 0;
+      acc.target += s.target || 0;
+      acc.totalValue += s.totalValue || 0;
+      return acc;
+    }, { performance: 0, target: 0, totalValue: 0 });
+
+    total.achievementPercent = total.target > 0 ? (total.performance / total.target) * 100 : null;
+
     return {
       services: enriched,
       volumeLeader: volumeLeader,
@@ -242,7 +274,8 @@
       highestTotal: highestTotal,
       qr: qr,
       qrAdvantages: qrAdvantages,
-      takeaway: takeaway
+      takeaway: takeaway,
+      total: total
     };
   }
 
@@ -252,6 +285,8 @@
     if (n.indexOf('POS') >= 0) return 'POS';
     if (n.indexOf('IPS') >= 0 || n.indexOf('P2P') >= 0) return 'P2P';
     if (n.indexOf('QR') >= 0) return 'QR';
+    if (n.indexOf('RTP') >= 0) return 'RTP';
+    if (n.indexOf('NPG') >= 0) return 'NPG';
     return name;
   }
 
@@ -318,11 +353,19 @@
 
     var highestAvgId = calc.highestAvg ? calc.highestAvg.id : null;
 
-    calc.services.forEach(function (s) {
+    function renderRow(s, isTotal) {
       var tr = document.createElement('tr');
 
+      if (isTotal) {
+        tr.className = 'total-row';
+        tr.appendChild(totalRowCells(calc.total));
+        tbody.appendChild(tr);
+        return;
+      }
+
       // Auto-highlight the highest-average-value financial service when enabled
-      var isHighestAvg = highestAvgId && highestAvgId === s.id;
+      var isSuccessRate = s.isSuccessRate;
+      var isHighestAvg = !isSuccessRate && highestAvgId && highestAvgId === s.id;
       var effectiveHighlight = s.highlighted || (settings.autoHighlight && isHighestAvg);
       if (effectiveHighlight) tr.className = 'highlight-row';
 
@@ -334,16 +377,36 @@
           pct + '%"></div></div></div>';
       };
 
-      // Service cell
+      // Service cell (skip icon row decoration for success-rate rows)
+      var iconClass = isSuccessRate ? 'non-financial' : (s.isFinancial ? 'financial' : 'non-financial');
       var tdSvc = '<td><div class="svc-cell">' +
-        '<div class="svc-icon ' + (s.isFinancial ? 'financial' : 'non-financial') + ' ' + getServiceIconClass(s.name) + '">' +
+        '<div class="svc-icon ' + iconClass + ' ' + getServiceIconClass(s.name) + '">' +
         '<i data-lucide="' + s.icon + '"></i></div>' +
         '<span class="svc-name">' + escHtml(s.name) + '</span></div></td>';
 
-      // Volume
-      var tdVol = '<td class="num-cell"><div class="num-primary">' +
-        (s.transactionVolume > 0 ? fmtNum(s.transactionVolume) : '-') + '</div>' +
-        bar(s.volumePercent) + '</td>';
+      // Performance (was Transaction Volume)
+      var perfText, perfBar;
+      if (isSuccessRate) {
+        perfText = (s.transactionVolume > 0 ? fmtDecimal(s.transactionVolume) + '%' : '-');
+        perfBar = '';
+      } else {
+        perfText = (s.transactionVolume > 0 ? fmtNum(s.transactionVolume) : '-');
+        perfBar = bar(s.volumePercent);
+      }
+      var tdPerf = '<td class="num-cell"><div class="num-primary">' + perfText + '</div>' + perfBar + '</td>';
+
+      // Monthly plan (target)
+      var tdTarget = '<td class="num-cell"><div class="num-primary">' +
+        (!isSuccessRate && s.target > 0 ? fmtNum(s.target) : '<span class="num-dash">-</span>') + '</div></td>';
+
+      // Achievement %
+      var achText;
+      if (isSuccessRate || s.achievementPercent === null || s.achievementPercent === undefined || isNaN(s.achievementPercent)) {
+        achText = '<span class="num-dash">-</span>';
+      } else {
+        achText = fmtDecimal(s.achievementPercent) + '%';
+      }
+      var tdAch = '<td class="num-cell"><div class="num-primary">' + achText + '</div></td>';
 
       // Total value
       var tdVal = '<td class="num-cell"><div class="num-primary">' +
@@ -363,9 +426,26 @@
       }
       tdMsg += '</td>';
 
-      tr.innerHTML = tdSvc + tdVol + tdVal + tdAvg + tdMsg;
+      tr.innerHTML = tdSvc + tdPerf + tdTarget + tdAch + tdVal + tdAvg + tdMsg;
       tbody.appendChild(tr);
+    }
+
+    function totalRowCells(tot) {
+      var achText = (tot.achievementPercent === null || tot.achievementPercent === undefined || isNaN(tot.achievementPercent))
+        ? '<span class="num-dash">-</span>' : fmtDecimal(tot.achievementPercent) + '%';
+      return '<td><div class="svc-cell"><span class="svc-name">TOTAL</span></div></td>' +
+        '<td class="num-cell"><div class="num-primary num-total">' + fmtNum(tot.performance) + '</div></td>' +
+        '<td class="num-cell"><div class="num-primary num-total">' + fmtNum(tot.target) + '</div></td>' +
+        '<td class="num-cell"><div class="num-primary num-total">' + achText + '</div></td>' +
+        '<td class="num-cell"><div class="num-primary num-total">ETB ' + fmtDecimal(tot.totalValue) + '</div></td>' +
+        '<td class="num-cell"><div class="num-dash">-</div></td>' +
+        '<td class="msg-cell"></td>';
+    }
+
+    calc.services.forEach(function (s) {
+      renderRow(s, false);
     });
+    renderRow(null, true);
   }
 
   function renderInsights(calc, report, settings) {
@@ -523,6 +603,7 @@
       type: 'financial',
       transactionVolume: 0,
       totalValue: 0,
+      target: 0,
       keyMessage: '',
       highlighted: false
     };
@@ -556,7 +637,7 @@
           '</button>' +
         '</div>' +
       '</div>' +
-      '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">' +
+      '<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">' +
         '<div>' +
           '<label class="block text-xs text-gray-500 mb-1">Volume</label>' +
           '<input type="text" value="' + fmtNum(svc.transactionVolume) + '" data-field="transactionVolume" ' +
@@ -565,10 +646,16 @@
         '</div>' +
         '<div>' +
           '<label class="block text-xs text-gray-500 mb-1">Total Value (ETB)</label>' +
-          '<input type="text" value="' + (svc.type === 'non-financial' ? '' : fmtDecimal(svc.totalValue)) + '" data-field="totalValue" ' +
+          '<input type="text" value="' + (svc.type === 'non-financial' || svc.type === 'success-rate' ? '' : fmtDecimal(svc.totalValue)) + '" data-field="totalValue" ' +
             'class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition total-input" ' +
-            'placeholder="0.00" ' + (svc.type === 'non-financial' ? 'disabled' : '') + '>' +
+            'placeholder="0.00" ' + (svc.type === 'non-financial' || svc.type === 'success-rate' ? 'disabled' : '') + '>' +
           '<span class="validation-msg text-xs text-red-500 hidden"></span>' +
+        '</div>' +
+        '<div>' +
+          '<label class="block text-xs text-gray-500 mb-1">Monthly Plan (Target)</label>' +
+          '<input type="text" value="' + (svc.type === 'success-rate' ? '' : fmtNum(svc.target || 0)) + '" data-field="target" ' +
+            'class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition" ' +
+            'placeholder="0" ' + (svc.type === 'success-rate' ? 'disabled' : '') + '>' +
         '</div>' +
         '<div>' +
           '<label class="block text-xs text-gray-500 mb-1">Key Message</label>' +
@@ -581,6 +668,7 @@
             'class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">' +
             '<option value="financial"' + (svc.type === 'financial' ? ' selected' : '') + '>Financial</option>' +
             '<option value="non-financial"' + (svc.type === 'non-financial' ? ' selected' : '') + '>Non-Financial</option>' +
+            '<option value="success-rate"' + (svc.type === 'success-rate' ? ' selected' : '') + '>Success Rate (%)</option>' +
           '</select>' +
         '</div>' +
       '</div>';
@@ -616,12 +704,24 @@
     var card = sel.closest('.service-card');
     if (!card) return;
     var valInput = card.querySelector('[data-field="totalValue"]');
+    var targetInput = card.querySelector('[data-field="target"]');
+    var isRate = sel.value === 'success-rate';
+    var isNonFin = sel.value === 'non-financial';
+
     if (valInput) {
-      if (sel.value === 'non-financial') {
+      if (isRate || isNonFin) {
         valInput.disabled = true;
         valInput.value = '';
       } else {
         valInput.disabled = false;
+      }
+    }
+    if (targetInput) {
+      if (isRate) {
+        targetInput.disabled = true;
+        targetInput.value = '';
+      } else {
+        targetInput.disabled = false;
       }
     }
     renderReport();

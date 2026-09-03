@@ -130,7 +130,7 @@
                 </button>
               </div>
             </div>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <div>
                 <label class="block text-xs text-gray-500 mb-1">Volume</label>
                 <input type="text" value="<%= service.transactionVolume.toLocaleString() %>" data-field="transactionVolume"
@@ -140,10 +140,16 @@
               </div>
               <div>
                 <label class="block text-xs text-gray-500 mb-1">Total Value (ETB)</label>
-                <input type="text" value="<%= service.type === 'non-financial' ? '' : service.totalValue.toLocaleString('en-US', {minimumFractionDigits: 2}) %>" data-field="totalValue"
+                <input type="text" value="<%= service.type === 'non-financial' || service.type === 'success-rate' ? '' : service.totalValue.toLocaleString('en-US', {minimumFractionDigits: 2}) %>" data-field="totalValue"
                   class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition total-input"
-                  placeholder="0.00" <%= service.type === 'non-financial' ? 'disabled' : '' %>>
+                  placeholder="0.00" <%= service.type === 'non-financial' || service.type === 'success-rate' ? 'disabled' : '' %>>
                 <span class="validation-msg text-xs text-red-500 hidden"></span>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Monthly Plan (Target)</label>
+                <input type="text" value="<%= service.type === 'success-rate' ? '' : (service.target || 0).toLocaleString() %>" data-field="target"
+                  class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition"
+                  placeholder="0" <%= service.type === 'success-rate' ? 'disabled' : '' %>>
               </div>
               <div>
                 <label class="block text-xs text-gray-500 mb-1">Key Message</label>
@@ -157,6 +163,7 @@
                   class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
                   <option value="financial" <%= service.type === 'financial' ? 'selected' : '' %>>Financial</option>
                   <option value="non-financial" <%= service.type === 'non-financial' ? 'selected' : '' %>>Non-Financial</option>
+                  <option value="success-rate" <%= service.type === 'success-rate' ? 'selected' : '' %>>Success Rate (%)</option>
                 </select>
               </div>
             </div>

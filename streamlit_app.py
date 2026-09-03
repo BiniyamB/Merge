@@ -268,8 +268,8 @@ def _render_snapshot_page():
 
     default_df = pd.DataFrame([
         {"name": s["name"], "type": s["type"], "transactionVolume": int(s["transactionVolume"]),
-         "totalValue": float(s["totalValue"]), "keyMessage": s["keyMessage"],
-         "highlighted": s["highlighted"]}
+         "totalValue": float(s["totalValue"]), "target": float(s.get("target", 0)),
+         "keyMessage": s["keyMessage"], "highlighted": s["highlighted"]}
         for s in SERVICE_DEFAULTS
     ])
 
@@ -286,9 +286,11 @@ def _render_snapshot_page():
         column_config={
             "name": st.column_config.TextColumn("Service", width="medium"),
             "type": st.column_config.SelectboxColumn(
-                "Type", options=["financial", "non-financial"], width="small"),
+                "Type", options=["financial", "non-financial", "success-rate"], width="small"),
             "transactionVolume": st.column_config.NumberColumn(
-                "Transaction Volume", min_value=0, step=100, format="%.0f", width="small"),
+                "Performance", min_value=0, step=100, format="%.0f", width="small"),
+            "target": st.column_config.NumberColumn(
+                "Monthly Plan (Target)", min_value=0, step=100, format="%.0f", width="small"),
             "totalValue": st.column_config.NumberColumn(
                 "Total Value (ETB)", min_value=0.0, step=1000.0, format="%.2f", width="small"),
             "keyMessage": st.column_config.TextColumn("Key Message", width="large"),
@@ -309,6 +311,7 @@ def _render_snapshot_page():
             "type": row.get("type") or "financial",
             "transactionVolume": row.get("transactionVolume"),
             "totalValue": row.get("totalValue"),
+            "target": row.get("target"),
             "keyMessage": row.get("keyMessage") or "",
             "highlighted": bool(row.get("highlighted")),
         })

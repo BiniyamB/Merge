@@ -302,11 +302,13 @@
   height: 9px;
 }
 
-.th-service { width: 19%; }
-.th-volume { width: 20%; text-align: right; }
-.th-value { width: 21%; text-align: right; }
-.th-avg { width: 24%; text-align: right; }
-.th-message { width: 16%; text-align: left; }
+.th-service { width: 17%; }
+.th-volume { width: 12%; text-align: right; }
+.th-target { width: 13%; text-align: right; }
+.th-ach { width: 12%; text-align: right; }
+.th-value { width: 15%; text-align: right; }
+.th-avg { width: 18%; text-align: right; }
+.th-message { width: 13%; text-align: left; }
 
 .report-table td {
   padding: 14px 12px;
@@ -397,6 +399,18 @@
 .num-dash {
   color: #9ca3af;
   font-style: italic;
+}
+
+.num-total {
+  color: var(--brand-500);
+  font-weight: 800;
+}
+
+.report-table tbody tr.total-row td {
+  background: #eef3fb;
+  border-top: 2px solid var(--navy-900);
+  font-weight: 800;
+  color: var(--navy-900);
 }
 
 /* Metric bar */

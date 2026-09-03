@@ -16,7 +16,7 @@ const defaultServices = [
     type: 'success-rate',
     transactionVolume: 98.7,
     totalValue: 0,
-    target: 0,
+    target: 98,
     keyMessage: 'ATM success rate',
     highlighted: false,
     highlightStyle: ''
@@ -28,7 +28,7 @@ const defaultServices = [
     type: 'success-rate',
     transactionVolume: 97.5,
     totalValue: 0,
-    target: 0,
+    target: 97,
     keyMessage: 'POS success rate',
     highlighted: false,
     highlightStyle: ''
@@ -40,7 +40,7 @@ const defaultServices = [
     type: 'success-rate',
     transactionVolume: 99.1,
     totalValue: 0,
-    target: 0,
+    target: 99,
     keyMessage: 'P2P success rate',
     highlighted: false,
     highlightStyle: ''

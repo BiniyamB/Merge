@@ -147,9 +147,9 @@
               </div>
               <div>
                 <label class="block text-xs text-gray-500 mb-1">Monthly Plan (Target)</label>
-                <input type="text" value="<%= service.type === 'success-rate' ? '' : (service.target || 0).toLocaleString() %>" data-field="target"
+                <input type="text" value="<%= (service.target || 0).toLocaleString() %>" data-field="target"
                   class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition"
-                  placeholder="0" <%= service.type === 'success-rate' ? 'disabled' : '' %>>
+                  placeholder="0">
               </div>
               <div>
                 <label class="block text-xs text-gray-500 mb-1">Key Message</label>

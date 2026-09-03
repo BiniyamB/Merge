@@ -22,11 +22,11 @@ REPORT_DEFAULTS = {
 
 SERVICE_DEFAULTS = [
     {"name": "ATM SUCCESS RATE", "type": "success-rate", "transactionVolume": 98.7,
-     "totalValue": 0, "target": 0, "keyMessage": "ATM success rate", "highlighted": False},
+     "totalValue": 0, "target": 98, "keyMessage": "ATM success rate", "highlighted": False},
     {"name": "POS SUCCESS RATE", "type": "success-rate", "transactionVolume": 97.5,
-     "totalValue": 0, "target": 0, "keyMessage": "POS success rate", "highlighted": False},
+     "totalValue": 0, "target": 97, "keyMessage": "POS success rate", "highlighted": False},
     {"name": "P2P SUCCESS RATE", "type": "success-rate", "transactionVolume": 99.1,
-     "totalValue": 0, "target": 0, "keyMessage": "P2P success rate", "highlighted": False},
+     "totalValue": 0, "target": 99, "keyMessage": "P2P success rate", "highlighted": False},
     {"name": "CASH WITHDRAWAL", "type": "financial", "transactionVolume": 306455,
      "totalValue": 455114740.00, "target": 340000, "keyMessage": "Lower-value transactions", "highlighted": False},
     {"name": "POS PURCHASE", "type": "financial", "transactionVolume": 10189,
@@ -112,7 +112,7 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
   border: 1px solid #e5e7eb;
 }
 .report-header { display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 20px; min-height: 62px;
+  padding: 8px 20px; min-height: 56px;
   background: linear-gradient(135deg, #0B2A5B 0%, #1e3a6b 100%); color: #fff; }
 .header-left { display: flex; align-items: center; }
 .header-center { flex: 1; text-align: center; padding: 0 16px; }
@@ -155,7 +155,7 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .report-table-wrapper { flex: 1; overflow: hidden; }
 .report-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .report-table thead tr { background: #0B2A5B; color: #fff; }
-.report-table th { padding: 7px 12px; font-size: 8px; font-weight: 700; letter-spacing: 1.2px;
+.report-table th { padding: 5px 8px; font-size: 8px; font-weight: 700; letter-spacing: 1px;
   text-transform: uppercase; text-align: left; white-space: nowrap; }
 .th-inner { display: flex; align-items: center; gap: 4px; }
 .th-num { justify-content: flex-end; }
@@ -174,13 +174,13 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .th-value { width: 15%; text-align: right; }
 .th-avg { width: 18%; text-align: right; }
 .th-message { width: 13%; text-align: left; }
-.report-table td { padding: 14px 12px; vertical-align: middle; border-bottom: 1px solid #f0f0f0; height: 84px; }
+.report-table td { padding: 4px 8px; vertical-align: middle; border-bottom: 1px solid #eef1f5; height: 30px; }
 .report-table tbody tr:last-child td { border-bottom: none; }
 .report-table tbody tr:nth-child(even) { background: #fafbfc; }
 .report-table tbody tr.highlight-row { background: #FFF3E0 !important; }
 .report-table tbody tr.highlight-row td { border-bottom-color: #ffe0cc; }
-.svc-cell { display: flex; align-items: center; gap: 8px; }
-.svc-icon { width: 28px; height: 28px; border-radius: 6px; display: flex;
+.svc-cell { display: flex; align-items: center; gap: 7px; }
+.svc-icon { width: 22px; height: 22px; border-radius: 5px; display: flex;
   align-items: center; justify-content: center; flex-shrink: 0; }
 .svc-icon.financial { background: #d9e2f0; color: #0B2A5B; }
 .svc-icon.non-financial { background: #e8eaed; color: #5f6368; }
@@ -191,17 +191,17 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .svc-icon.landmark { background: #e2f0f7; color: #0f7a9e; }
 .svc-icon.smartphone { background: #fde8e8; color: #c0392b; }
 .svc-icon.default { background: #d9e2f0; color: #0B2A5B; }
-.svc-icon svg { width: 14px; height: 14px; }
-.svc-name { font-weight: 700; color: #0B2A5B; font-size: 10.5px; letter-spacing: .3px; line-height: 1.2; }
+.svc-icon svg { width: 12px; height: 12px; }
+.svc-name { font-weight: 700; color: #0B2A5B; font-size: 10px; letter-spacing: .2px; line-height: 1.15; }
 .highlight-row .svc-name { color: #F4511E; }
 .num-cell { text-align: right; font-variant-numeric: tabular-nums; }
-.num-primary { font-weight: 700; font-size: 12px; color: #0B2A5B; line-height: 1.2; }
+.num-primary { font-weight: 700; font-size: 11px; color: #0B2A5B; line-height: 1.15; }
 .highlight-row .num-primary { color: #F4511E; }
 .num-dash { color: #9ca3af; font-style: italic; }
 .num-total { color: #F4511E; font-weight: 800; }
 .report-table tbody tr.total-row td { background: #eef3fb; border-top: 2px solid #0B2A5B; font-weight: 800; color: #0B2A5B; }
-.metric-bar-wrap { margin-top: 3px; }
-.metric-bar { height: 3px; border-radius: 2px; background: #d9e2f0; overflow: hidden; }
+.metric-bar-wrap { margin-top: 2px; }
+.metric-bar { height: 2px; border-radius: 2px; background: #d9e2f0; overflow: hidden; }
 .metric-bar-fill { height: 100%; border-radius: 2px; background: #416eb4; transition: width .4s ease; }
 .highlight-row .metric-bar-fill { background: #F4511E; }
 .msg-cell { font-size: 9.5px; color: #6b7280; line-height: 1.3; }
@@ -209,9 +209,9 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .msg-badge { display: inline-block; background: #F4511E; color: #fff; font-size: 7px;
   font-weight: 700; letter-spacing: .8px; padding: 1px 6px; border-radius: 3px;
   text-transform: uppercase; margin-top: 2px; }
-.report-insights { display: grid; grid-template-columns: 1fr 1.35fr 1.1fr; gap: 10px;
-  padding: 12px 14px 14px; background: #f6f8fc; border-top: 2px solid #0B2A5B; }
-.insight-card { border-radius: 10px; padding: 12px 14px; }
+.report-insights { display: grid; grid-template-columns: 1fr 1.35fr 1.1fr; gap: 8px;
+  padding: 8px 12px 10px; background: #f6f8fc; border-top: 2px solid #0B2A5B; }
+.insight-card { border-radius: 8px; padding: 8px 12px; }
 .volume-leader-card { background: linear-gradient(135deg, #0B2A5B 0%, #1e3a6b 100%); }
 .qr-advantage-card { background: linear-gradient(135deg, #F4511E 0%, #ff7a3d 100%); }
 .takeaway-card { background: linear-gradient(135deg, #0b7a45 0%, #14a46b 100%); }
@@ -229,7 +229,7 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .qr-comp-label { font-size: 7px; color: rgba(255,255,255,.8); line-height: 1.2; }
 .takeaway-text { font-size: 9.5px; color: #fff; line-height: 1.5; }
 .report-footer { display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 20px; background: #0B2A5B; color: #fff; min-height: 34px; }
+  padding: 6px 20px; background: #0B2A5B; color: #fff; min-height: 30px; }
 .footer-org-name { font-size: 10px; font-weight: 700; letter-spacing: .5px; }
 .footer-tagline { font-size: 8px; color: rgba(255,255,255,.55); margin-left: 8px; font-style: italic; }
 .footer-web { display: flex; align-items: center; gap: 5px; font-size: 9px; color: rgba(255,255,255,.7); }
@@ -352,7 +352,7 @@ def calc_all(services):
         is_fin = s.get("type") == "financial" and val > 0
         avg = (val / vol) if (is_fin and vol > 0) else 0
         ach = None
-        if not is_rate and target > 0:
+        if target > 0:
             ach = (vol / target) * 100
         enriched.append({
             "uid": s.get("uid") or f"row_{idx}",
@@ -484,9 +484,13 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
                                                    else '<span class="num-dash">-</span>') + "</div>")
         else:
             perf = ('<div class="num-primary">' + fmt_int(s["transactionVolume"]) + "</div>" + bar(s["volumePercent"]))
-        target = ('<div class="num-primary">' + (fmt_int(s["target"]) if (not is_rate and s["target"] > 0)
-                                                 else '<span class="num-dash">-</span>') + "</div>")
-        if is_rate or s["achievementPercent"] is None:
+        if is_rate:
+            target = ('<div class="num-primary">' + (fmt_dec(s["target"]) + "%" if s["target"] > 0
+                                                    else '<span class="num-dash">-</span>') + "</div>")
+        else:
+            target = ('<div class="num-primary">' + (fmt_int(s["target"]) if s["target"] > 0
+                                                    else '<span class="num-dash">-</span>') + "</div>")
+        if s["achievementPercent"] is None:
             ach = '<span class="num-dash">-</span>'
         else:
             ach = f"{s['achievementPercent']:.2f}%"

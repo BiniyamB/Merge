@@ -169,15 +169,18 @@
     if (s.type === 'financial' && s.transactionVolume > 0 && s.totalValue > 0) {
       avg = s.totalValue / s.transactionVolume;
     }
+    var rate = isSuccessRate(s);
+    var ach = null;
+    if (!rate && s.target > 0) {
+      ach = (s.transactionVolume / s.target) * 100;
+    } else if (rate && s.target > 0) {
+      ach = (s.transactionVolume / s.target) * 100;
+    }
     return {
       avgTransactionValue: avg,
       isFinancial: s.type === 'financial' && s.totalValue > 0,
-      isSuccessRate: isSuccessRate(s),
-      achievementPercent: (s.type === 'financial' && s.target > 0)
-        ? (s.transactionVolume / s.target) * 100
-        : (s.type === 'non-financial' && s.target > 0)
-          ? (s.transactionVolume / s.target) * 100
-          : null
+      isSuccessRate: rate,
+      achievementPercent: ach
     };
   }
 
@@ -396,12 +399,17 @@
       var tdPerf = '<td class="num-cell"><div class="num-primary">' + perfText + '</div>' + perfBar + '</td>';
 
       // Monthly plan (target)
-      var tdTarget = '<td class="num-cell"><div class="num-primary">' +
-        (!isSuccessRate && s.target > 0 ? fmtNum(s.target) : '<span class="num-dash">-</span>') + '</div></td>';
+      var targetText;
+      if (isSuccessRate) {
+        targetText = s.target > 0 ? fmtDecimal(s.target) + '%' : '<span class="num-dash">-</span>';
+      } else {
+        targetText = s.target > 0 ? fmtNum(s.target) : '<span class="num-dash">-</span>';
+      }
+      var tdTarget = '<td class="num-cell"><div class="num-primary">' + targetText + '</div></td>';
 
       // Achievement %
       var achText;
-      if (isSuccessRate || s.achievementPercent === null || s.achievementPercent === undefined || isNaN(s.achievementPercent)) {
+      if (s.achievementPercent === null || s.achievementPercent === undefined || isNaN(s.achievementPercent)) {
         achText = '<span class="num-dash">-</span>';
       } else {
         achText = fmtDecimal(s.achievementPercent) + '%';
@@ -653,9 +661,9 @@
         '</div>' +
         '<div>' +
           '<label class="block text-xs text-gray-500 mb-1">Monthly Plan (Target)</label>' +
-          '<input type="text" value="' + (svc.type === 'success-rate' ? '' : fmtNum(svc.target || 0)) + '" data-field="target" ' +
+          '<input type="text" value="' + (svc.type === 'success-rate' ? fmtDecimal(svc.target || 0) : fmtNum(svc.target || 0)) + '" data-field="target" ' +
             'class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition" ' +
-            'placeholder="0" ' + (svc.type === 'success-rate' ? 'disabled' : '') + '>' +
+            'placeholder="0">' +
         '</div>' +
         '<div>' +
           '<label class="block text-xs text-gray-500 mb-1">Key Message</label>' +
@@ -717,12 +725,7 @@
       }
     }
     if (targetInput) {
-      if (isRate) {
-        targetInput.disabled = true;
-        targetInput.value = '';
-      } else {
-        targetInput.disabled = false;
-      }
+      targetInput.disabled = false;
     }
     renderReport();
   };

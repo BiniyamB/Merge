@@ -416,8 +416,7 @@ def calc_all(services):
         "target": sum(x["target"] for x in countables),
         "totalValue": sum(x["totalValue"] for x in countables),
     }
-    ach_list = [x["achievementPercent"] for x in enriched if x.get("achievementPercent") is not None]
-    total["achievementPercent"] = (sum(ach_list) / len(ach_list)) if ach_list else None
+    total["achievementPercent"] = (total["performance"] / total["target"] * 100) if total["target"] > 0 else None
 
     return {
         "services": enriched,

@@ -270,10 +270,7 @@
       return acc;
     }, { performance: 0, target: 0, totalValue: 0 });
 
-    var achList = enriched
-      .map(function (s) { return s.achievementPercent; })
-      .filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
-    total.achievementPercent = achList.length > 0 ? (achList.reduce(function (a, b) { return a + b; }, 0) / achList.length) : null;
+    total.achievementPercent = total.target > 0 ? (total.performance / total.target) * 100 : null;
 
     return {
       services: enriched,

@@ -663,6 +663,36 @@ def test_pos_daily_dedupe_still_checks_other_columns():
     assert len(result.duplicate_records) == 0
 
 
+def test_pos_daily_dedupe_matches_int_vs_float_numerics():
+    """The same number stored as an int in one file and a float in another
+    (e.g. TRANS_DATE 20260804 vs 20260804.0, RESP -1 vs -1.0) still matches,
+    so the rows are correctly treated as duplicates."""
+    wb1 = Workbook()
+    ws1 = wb1.active
+    ws1.append(list(POS_CANONICAL_COLUMNS))
+    ws1.append(["DB", "Rammis Bank", "9231438*****0324507", 20260804, "17:53:44",
+                "POS purchase", 1070.3, 230, -1, "621614050117", "TQNSPRM2",
+                "QUEENS SUPERMARKET PLC"])
+    buf1 = io.BytesIO()
+    wb1.save(buf1)
+
+    wb2 = Workbook()
+    ws2 = wb2.active
+    ws2.append(list(POS_CANONICAL_COLUMNS))
+    ws2.append(["Dashen Bank", "Rammis Bank", "9231438*****0324507", 20260804.0,
+                "17:53:44", "Purchase", 1070.3, 230.0, -1.0, "621614050117",
+                "TQNSPRM2", "QUEENS SUPERMARKET PLC"])
+    buf2 = io.BytesIO()
+    wb2.save(buf2)
+
+    result = merge_reports(
+        [("daily.xlsx", buf1.getvalue()), ("pos_ss.xlsx", buf2.getvalue())],
+        mode_key="pos", dedupe=True,
+    )
+    assert result.total_rows == 1
+    assert len(result.duplicate_records) == 2
+
+
 def test_pos_success_dedupe_ignores_acquirer_issuer_trans_type():
     # POS Success (SVFE) also ignores ACQUIRER / ISSUER / TRANS_TYPE
     # (it has no CURRENCY column). Rows differing only in them are duplicates.

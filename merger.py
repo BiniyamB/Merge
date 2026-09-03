@@ -1187,9 +1187,20 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
     # This block always runs so the caller can offer a
     # "download only the duplicates" report even when dedupe is off.
     def _fingerprint(v: Any) -> str:
-        """Stable string key for a single cell value."""
+        """Stable string key for a single cell value.
+
+        Numeric cells are normalized so that 230, 230.0 and 20260804 /
+        20260804.0 produce the same key - the same number is often stored as
+        an int in one export and as a float in another. String cells (RRN,
+        addresses, dates-as-text) are left untouched.
+        """
         if _is_empty(v):
             return ""
+        if isinstance(v, bool):
+            return "1" if v else "0"
+        if isinstance(v, (int, float)):
+            val = float(v)
+            return str(int(val)) if val.is_integer() else repr(v)
         return str(v)
 
     # Columns excluded from the duplicate check per mode (see

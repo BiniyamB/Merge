@@ -151,7 +151,10 @@
 
   function fmtNum(n) {
     if (n === null || n === undefined || isNaN(n) || !isFinite(n)) return '-';
-    return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    if (Number.isInteger(n)) {
+      return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    return n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
   }
 
   function fmtDecimal(n) {
@@ -434,7 +437,7 @@
       }
       tdMsg += '</td>';
 
-      tr.innerHTML = tdSvc + tdPerf + tdTarget + tdVal + tdAch + tdAvg + tdMsg;
+      tr.innerHTML = tdSvc + tdTarget + tdPerf + tdVal + tdAch + tdAvg + tdMsg;
       tbody.appendChild(tr);
     }
 
@@ -442,8 +445,8 @@
       var achText = (tot.achievementPercent === null || tot.achievementPercent === undefined || isNaN(tot.achievementPercent))
         ? '<span class="num-dash">-</span>' : fmtDecimal(tot.achievementPercent) + '%';
       return '<td><div class="svc-cell"><span class="svc-name">TOTAL</span></div></td>' +
-        '<td class="num-cell"><div class="num-primary num-total">' + fmtNum(tot.performance) + '</div></td>' +
         '<td class="num-cell"><div class="num-primary num-total">' + fmtNum(tot.target) + '</div></td>' +
+        '<td class="num-cell"><div class="num-primary num-total">' + fmtNum(tot.performance) + '</div></td>' +
         '<td class="num-cell"><div class="num-primary num-total">ETB ' + fmtDecimal(tot.totalValue) + '</div></td>' +
         '<td class="num-cell"><div class="num-primary num-total">' + achText + '</div></td>' +
         '<td class="num-cell"><div class="num-dash">-</div></td>' +

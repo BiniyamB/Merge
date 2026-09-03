@@ -261,7 +261,9 @@ def fmt_int(n):
     n = _num(n)
     if n <= 0:
         return "-"
-    return f"{n:,.0f}"
+    if n.is_integer():
+        return f"{int(n):,}"
+    return f"{n:,.2f}".rstrip('0').rstrip('.')
 
 
 def fmt_dec(n):
@@ -508,8 +510,8 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
         key_msg = ('<td class="msg-cell ' + msg + '">' + _esc(s["keyMessage"]) + badge + "</td>")
 
         rows.append("<tr" + tr_class + ">" + svc
-                    + '<td class="num-cell">' + perf + "</td>"
                     + '<td class="num-cell">' + target + "</td>"
+                    + '<td class="num-cell">' + perf + "</td>"
                     + '<td class="num-cell">' + tot + "</td>"
                     + '<td class="num-cell">' + ach + "</td>"
                     + '<td class="num-cell">' + avg + "</td>"
@@ -519,11 +521,11 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
     if tot["achievementPercent"] is None:
         tot_ach = '<span class="num-dash">-</span>'
     else:
-        tot_ach = f"{tot['achievementPercent']:.2f}%"
+        tot_ach = f"{tot['achievementPercent']:.2f}%" if not _num(tot['achievementPercent']).is_integer() else f"{int(tot['achievementPercent'])}%"
     total_row = ('<tr class="total-row">'
                  '<td><div class="svc-cell"><span class="svc-name">TOTAL</span></div></td>'
-                 '<td class="num-cell"><div class="num-primary num-total">' + fmt_int(tot["performance"]) + "</div></td>"
                  '<td class="num-cell"><div class="num-primary num-total">' + fmt_int(tot["target"]) + "</div></td>"
+                 '<td class="num-cell"><div class="num-primary num-total">' + fmt_int(tot["performance"]) + "</div></td>"
                  '<td class="num-cell"><div class="num-primary num-total">ETB ' + fmt_dec(tot["totalValue"]) + "</div></td>"
                  '<td class="num-cell"><div class="num-primary num-total">' + tot_ach + "</div></td>"
                  '<td class="num-cell"><div class="num-dash">-</div></td>'
@@ -532,10 +534,10 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
     table = ('<div class="report-table-wrapper"><table class="report-table"><thead><tr>'
              '<th class="th-service"><span class="th-inner"><span class="th-icon th-icon-blue">'
              '<i data-lucide="list"></i></span>SERVICE</span></th>'
-             '<th class="th-volume"><span class="th-inner th-num"><span class="th-icon th-icon-purple">'
-             '<i data-lucide="hash"></i></span>PERFORMANCE</span></th>'
              '<th class="th-target"><span class="th-inner th-num"><span class="th-icon th-icon-purple">'
              '<i data-lucide="target"></i></span>MONTHLY PLAN (TARGET)</span></th>'
+             '<th class="th-volume"><span class="th-inner th-num"><span class="th-icon th-icon-purple">'
+             '<i data-lucide="hash"></i></span>PERFORMANCE</span></th>'
              '<th class="th-value"><span class="th-inner th-num"><span class="th-icon th-icon-teal">'
              '<i data-lucide="wallet"></i></span>TOTAL VALUE (ETB)</span></th>'
              '<th class="th-ach"><span class="th-inner th-num"><span class="th-icon th-icon-green">'

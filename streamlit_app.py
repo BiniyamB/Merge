@@ -267,8 +267,10 @@ def _render_snapshot_page():
                 unsafe_allow_html=True)
 
     default_df = pd.DataFrame([
-        {"name": s["name"], "type": s["type"], "transactionVolume": int(s["transactionVolume"]),
-         "totalValue": float(s["totalValue"]), "target": float(s.get("target", 0)),
+        {"name": s["name"], "type": s["type"],
+         "target": float(s.get("target", 0)),
+         "transactionVolume": float(s["transactionVolume"]),
+         "totalValue": float(s["totalValue"]),
          "keyMessage": s["keyMessage"], "highlighted": s["highlighted"]}
         for s in SERVICE_DEFAULTS
     ])
@@ -287,10 +289,10 @@ def _render_snapshot_page():
             "name": st.column_config.TextColumn("Service", width="medium"),
             "type": st.column_config.SelectboxColumn(
                 "Type", options=["financial", "non-financial", "success-rate"], width="small"),
-            "transactionVolume": st.column_config.NumberColumn(
-                "Performance", min_value=0, step=100, format="%.0f", width="small"),
             "target": st.column_config.NumberColumn(
-                "Monthly Plan (Target)", min_value=0, step=100, format="%.0f", width="small"),
+                "Monthly Plan (Target)", min_value=0.0, step=0.01, format="%.2f", width="small"),
+            "transactionVolume": st.column_config.NumberColumn(
+                "Performance", min_value=0.0, step=0.01, format="%.2f", width="small"),
             "totalValue": st.column_config.NumberColumn(
                 "Total Value (ETB)", min_value=0.0, step=1000.0, format="%.2f", width="small"),
             "keyMessage": st.column_config.TextColumn("Key Message", width="large"),

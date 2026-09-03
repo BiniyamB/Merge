@@ -630,22 +630,22 @@ def _pos_daily_rows(input_rows):
     return buf.getvalue()
 
 
-def test_pos_daily_dedupe_ignores_acquirer_and_trans_type():
-    # For POS (Daily), ACQUIRER and TRANS_TYPE are not part of row identity.
-    # Two rows differing only in those columns are treated as duplicates,
-    # while differences in any other column keep them distinct.
+def test_pos_daily_dedupe_ignores_acquirer_issuer_currency_trans_type():
+    # For POS (Daily), ACQUIRER, ISSUER, TRANS_TYPE and CURRENCY are not part
+    # of row identity. Two rows differing only in those columns are treated
+    # as duplicates, while differences in any other column keep them distinct.
     base = ["Bank-A", "Issuer", "CARD1", 20260813, "10:00:00", "Purchase", 100, 230, "-1", "RRN1", "T1", "Addr1"]
-    # Three CARD1 rows differ only in ACQUIRER/TRANS_TYPE -> one duplicate group
+    # Three CARD1 rows differ only in ACQUIRER/ISSUER/TRANS_TYPE/CURRENCY
     rows_a = list(base), list(base)
     rows_b = [
-        ["Bank-B", "Issuer", "CARD1", 20260813, "10:00:00", "WITHDRAW", 100, 230, "-1", "RRN1", "T1", "Addr1"],
+        ["Bank-B", "OtherIssuer", "CARD1", 20260813, "10:00:00", "WITHDRAW", 100, 840, "-1", "RRN1", "T1", "Addr1"],
         ["Bank-A", "Issuer", "CARD2", 20260813, "10:00:00", "Purchase", 200, 230, "-1", "RRN2", "T1", "Addr2"],
     ]
     result = merge_reports(
         [("a.xlsx", _pos_daily_rows([*rows_a])), ("b.xlsx", _pos_daily_rows(rows_b))],
         mode_key="pos", dedupe=True,
     )
-    # CARD1 triple (A,A,B) differ only in ACQUIRER/TRANS_TYPE -> collapsed to 1
+    # CARD1 triple (A,A,B) differ only in the ignored columns -> collapsed to 1
     # CARD2 row (B) differs in AMOUNT/PAN/RRN/ADDRESS -> stays
     assert result.total_rows == 2
     assert len(result.duplicate_records) == 3  # the CARD1 triple
@@ -653,7 +653,7 @@ def test_pos_daily_dedupe_ignores_acquirer_and_trans_type():
 
 def test_pos_daily_dedupe_still_checks_other_columns():
     # Rows that also differ in AMOUNT are NOT duplicates even though they
-    # share ACQUIRER and TRANS_TYPE.
+    # share the ignored columns.
     rows = [
         ["Bank-A", "Issuer", "CARD1", 20260813, "10:00:00", "Purchase", 100, 230, "-1", "RRN1", "T1", "Addr1"],
         ["Bank-A", "Issuer", "CARD1", 20260813, "10:00:00", "Purchase", 200, 230, "-1", "RRN1", "T1", "Addr1"],
@@ -661,6 +661,21 @@ def test_pos_daily_dedupe_still_checks_other_columns():
     result = merge_reports([("a.xlsx", _pos_daily_rows(rows))], mode_key="pos", dedupe=True)
     assert result.total_rows == 2
     assert len(result.duplicate_records) == 0
+
+
+def test_pos_success_dedupe_ignores_acquirer_issuer_trans_type():
+    # POS Success (SVFE) also ignores ACQUIRER / ISSUER / TRANS_TYPE
+    # (it has no CURRENCY column). Rows differing only in them are duplicates.
+    wb = Workbook()
+    ws = wb.active
+    ws.append(list(POS_SUCCESS_CANONICAL_COLUMNS))
+    ws.append(["Bank-A", "Issuer", "PAN1", 20260813, "10:00:00", "Purchase", 100, "00", "REF1", 260813000058603840, "M1"])
+    ws.append(["Bank-B", "Issuer", "PAN1", 20260813, "10:00:00", "WITHDRAW", 100, "00", "REF1", 260813000058603840, "M1"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    result = merge_reports([("a.xlsx", buf.getvalue())], mode_key="pos_success", dedupe=True)
+    assert result.total_rows == 1
+    assert len(result.duplicate_records) == 2
 
 
 def test_pos_daily_extra_column_removed():

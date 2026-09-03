@@ -428,6 +428,20 @@ MODES = {
     "qr": QR_MODE,
 }
 
+# Columns excluded when deciding whether two rows are duplicates. These
+# values (acquirer / issuer / trans type / currency) are not meaningful for
+# a transaction's identity, so two rows that differ only in them are still
+# the same transaction. Everything else - the card/account, date, time,
+# amount, response, reference and terminal/address - is checked. QR rows
+# have none of these columns, so all of them are checked.
+DUPLICATE_IGNORE_COLUMNS: dict[str, set[str]] = {
+    "pos": {"ACQUIRER", "ISSUER", "CURRENCY", "TRANS_TYPE"},
+    "atm": {"ACQUIRER", "ISSUER", "CURRENCY", "TRANS_TYPE"},
+    "pos_decline": {"ACQUIRER", "ISSUER", "TRANS_TYPE"},
+    "pos_success": {"ACQUIRER", "ISSUER", "TRANS_TYPE"},
+    "qr": set(),
+}
+
 
 # ---------------------------------------------------------------------------
 # Cell helpers
@@ -1178,12 +1192,10 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
             return ""
         return str(v)
 
-    # Columns excluded from the duplicate check. For the POS daily mode the
-    # ACQUIRER and TRANS_TYPE values are not meaningful for row identity, so
-    # they are ignored when deciding whether two rows are duplicates.
-    dup_ignore_cols: set[str] = set()
-    if mode_key == "pos":
-        dup_ignore_cols = {"ACQUIRER", "TRANS_TYPE"}
+    # Columns excluded from the duplicate check per mode (see
+    # DUPLICATE_IGNORE_COLUMNS). Acquirer / issuer / trans type / currency
+    # are ignored, so rows differing only in them are treated as identical.
+    dup_ignore_cols = DUPLICATE_IGNORE_COLUMNS.get(mode_key, set())
 
     dup_cols = [c for c in mode.canonical_columns if c not in dup_ignore_cols]
 

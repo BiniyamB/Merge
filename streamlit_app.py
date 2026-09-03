@@ -434,6 +434,8 @@ if st.session_state.merged_meta is None:
         value=False,
         help="Keep only the first occurrence of each identical row and remove the rest. "
              "Two rows are considered duplicates when every column has the same value. "
+             "For the POS (Daily) report, ACQUIRER and TRANS_TYPE are ignored when "
+             "deciding duplicates. "
              "Example: if headers are Class | Age | Grade and rows are "
              "A|17|5, B|17|7, A|17|5 — the third row is a duplicate of the first; "
              "with this toggle on, only one A|17|5 row appears in the merged output. "

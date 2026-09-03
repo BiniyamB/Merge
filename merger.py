@@ -1178,8 +1178,17 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
             return ""
         return str(v)
 
+    # Columns excluded from the duplicate check. For the POS daily mode the
+    # ACQUIRER and TRANS_TYPE values are not meaningful for row identity, so
+    # they are ignored when deciding whether two rows are duplicates.
+    dup_ignore_cols: set[str] = set()
+    if mode_key == "pos":
+        dup_ignore_cols = {"ACQUIRER", "TRANS_TYPE"}
+
+    dup_cols = [c for c in mode.canonical_columns if c not in dup_ignore_cols]
+
     record_keys = [
-        tuple(_fingerprint(v) for v in rec.values())
+        tuple(_fingerprint(rec[c]) for c in dup_cols)
         for rec in records
     ]
     key_counts: dict[tuple, int] = {}

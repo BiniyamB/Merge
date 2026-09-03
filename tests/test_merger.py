@@ -618,6 +618,51 @@ def test_pos_daily_workbook_layout():
     assert ws.cell(row=2, column=5).value == "0:06:35"
 
 
+def _pos_daily_rows(input_rows):
+    """Build a SmartVista daily POS report (canonical headers) with the given rows."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(list(POS_CANONICAL_COLUMNS))
+    for r in input_rows:
+        ws.append(r)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_pos_daily_dedupe_ignores_acquirer_and_trans_type():
+    # For POS (Daily), ACQUIRER and TRANS_TYPE are not part of row identity.
+    # Two rows differing only in those columns are treated as duplicates,
+    # while differences in any other column keep them distinct.
+    base = ["Bank-A", "Issuer", "CARD1", 20260813, "10:00:00", "Purchase", 100, 230, "-1", "RRN1", "T1", "Addr1"]
+    # Three CARD1 rows differ only in ACQUIRER/TRANS_TYPE -> one duplicate group
+    rows_a = list(base), list(base)
+    rows_b = [
+        ["Bank-B", "Issuer", "CARD1", 20260813, "10:00:00", "WITHDRAW", 100, 230, "-1", "RRN1", "T1", "Addr1"],
+        ["Bank-A", "Issuer", "CARD2", 20260813, "10:00:00", "Purchase", 200, 230, "-1", "RRN2", "T1", "Addr2"],
+    ]
+    result = merge_reports(
+        [("a.xlsx", _pos_daily_rows([*rows_a])), ("b.xlsx", _pos_daily_rows(rows_b))],
+        mode_key="pos", dedupe=True,
+    )
+    # CARD1 triple (A,A,B) differ only in ACQUIRER/TRANS_TYPE -> collapsed to 1
+    # CARD2 row (B) differs in AMOUNT/PAN/RRN/ADDRESS -> stays
+    assert result.total_rows == 2
+    assert len(result.duplicate_records) == 3  # the CARD1 triple
+
+
+def test_pos_daily_dedupe_still_checks_other_columns():
+    # Rows that also differ in AMOUNT are NOT duplicates even though they
+    # share ACQUIRER and TRANS_TYPE.
+    rows = [
+        ["Bank-A", "Issuer", "CARD1", 20260813, "10:00:00", "Purchase", 100, 230, "-1", "RRN1", "T1", "Addr1"],
+        ["Bank-A", "Issuer", "CARD1", 20260813, "10:00:00", "Purchase", 200, 230, "-1", "RRN1", "T1", "Addr1"],
+    ]
+    result = merge_reports([("a.xlsx", _pos_daily_rows(rows))], mode_key="pos", dedupe=True)
+    assert result.total_rows == 2
+    assert len(result.duplicate_records) == 0
+
+
 def test_pos_daily_extra_column_removed():
     rep = parse_report(_pos_daily_with_utrnno(), "pos_extra.xlsx", mode=POS_MODE)
     assert rep.data_rows == 1

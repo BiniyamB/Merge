@@ -433,11 +433,11 @@ if st.session_state.merged_meta is None:
         "Remove duplicate rows",
         value=False,
         help="Keep only the first occurrence of each identical row and remove the rest. "
-             "For POS and ATM reports, ACQUIRER, ISSUER, CURRENCY and TRANS_TYPE are "
-             "ignored when deciding duplicates. "
-             "Example: if headers are Class | Age | Grade and rows are "
-             "A|17|5, B|17|7, A|17|5 — the third row is a duplicate of the first; "
-             "with this toggle on, only one A|17|5 row appears in the merged output. "
+             "ACQUIRER, ISSUER, TRANS_TYPE and CURRENCY are excluded from the comparison "
+             "in every report mode (POS Decline, POS Success, POS Daily, ATM, QR) — "
+             "so two rows are duplicates when every other column (card/account number, "
+             "date, time, amount, response code, reference numbers, terminal, address) matches, "
+             "regardless of which acquirer or issuer processed them. "
              "The 'Download Duplicates' button always shows all rows involved, even when this is off.",
     )
 

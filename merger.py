@@ -428,19 +428,25 @@ MODES = {
     "qr": QR_MODE,
 }
 
-# Columns excluded when deciding whether two rows are duplicates. These
-# values (acquirer / issuer / trans type / currency) are not meaningful for
-# a transaction's identity, so two rows that differ only in them are still
-# the same transaction. Everything else - the card/account, date, time,
-# amount, response, reference and terminal/address - is checked. QR rows
-# have none of these columns, so all of them are checked.
-DUPLICATE_IGNORE_COLUMNS: dict[str, set[str]] = {
-    "pos": {"ACQUIRER", "ISSUER", "CURRENCY", "TRANS_TYPE"},
-    "atm": {"ACQUIRER", "ISSUER", "CURRENCY", "TRANS_TYPE"},
-    "pos_decline": {"ACQUIRER", "ISSUER", "TRANS_TYPE"},
-    "pos_success": {"ACQUIRER", "ISSUER", "TRANS_TYPE"},
-    "qr": set(),
-}
+# Canonical column names that are EXCLUDED from the duplicate-row fingerprint
+# across ALL report modes (POS Decline, POS Success, POS Daily, ATM, QR).
+#
+# ACQUIRER, ISSUER, TRANS_TYPE and CURRENCY do not uniquely identify a
+# transaction - the same card swipe / ATM withdrawal can appear in exports
+# from different acquirers or with a slightly different TRANS_TYPE label.
+# Excluding them means two rows are treated as duplicates when every other
+# column (card/account number, date, time, amount, response code, reference
+# numbers, terminal ID, merchant/address) matches.
+#
+# Applied uniformly: if a mode does not have one of these columns (e.g. QR
+# has no CURRENCY or TRANS_TYPE) the missing column is simply not present in
+# the record, so the exclusion has no effect on those modes.
+DUPLICATE_IGNORE_COLUMNS: frozenset[str] = frozenset({
+    "ACQUIRER",
+    "ISSUER",
+    "TRANS_TYPE",
+    "CURRENCY",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -1203,12 +1209,21 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
             return str(int(val)) if val.is_integer() else repr(v)
         return str(v)
 
-    # Columns excluded from the duplicate check per mode (see
-    # DUPLICATE_IGNORE_COLUMNS). Acquirer / issuer / trans type / currency
-    # are ignored, so rows differing only in them are treated as identical.
-    dup_ignore_cols = DUPLICATE_IGNORE_COLUMNS.get(mode_key, set())
-
-    dup_cols = [c for c in mode.canonical_columns if c not in dup_ignore_cols]
+    # Build the list of columns used for the duplicate fingerprint.
+    # DUPLICATE_IGNORE_COLUMNS (ACQUIRER, ISSUER, TRANS_TYPE, CURRENCY) are
+    # excluded from the check for every mode. If a mode does not have one of
+    # those columns it is simply absent from the record dict, so the exclusion
+    # has no effect. All remaining columns must match for two rows to be
+    # considered duplicates.
+    #
+    # Example (ATM columns):
+    #   Used   : CARD_NUMBER | TRANS_DATE | TRANS_TIME | AMOUNT | RESP |
+    #             RRN | UTRNNO | TERMINAL_ID | ADDRESS_NAME
+    #   Ignored: ACQUIRER | ISSUER | TRANS_TYPE | CURRENCY
+    dup_cols = [
+        c for c in mode.canonical_columns
+        if c not in DUPLICATE_IGNORE_COLUMNS
+    ]
 
     record_keys = [
         tuple(_fingerprint(rec[c]) for c in dup_cols)

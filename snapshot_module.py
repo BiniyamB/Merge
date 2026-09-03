@@ -29,15 +29,15 @@ SERVICE_DEFAULTS = [
      "totalValue": 0, "target": 99, "keyMessage": "P2P success rate", "highlighted": False},
     {"name": "CASH WITHDRAWAL", "type": "financial", "transactionVolume": 306455,
      "totalValue": 455114740.00, "target": 340000, "keyMessage": "Lower-value transactions", "highlighted": False},
+    {"name": "BALANCE INQUIRY & MINI STATEMENT", "type": "non-financial",
+     "transactionVolume": 18406, "totalValue": 0, "target": 20000, "keyMessage": "Non-financial service",
+     "highlighted": False},
     {"name": "POS PURCHASE", "type": "financial", "transactionVolume": 10189,
      "totalValue": 33248484.72, "target": 12000, "keyMessage": "Moderate transaction value", "highlighted": False},
     {"name": "IPS P2P", "type": "financial", "transactionVolume": 926648,
      "totalValue": 4049226900.62, "target": 1000000, "keyMessage": "Volume leader and value driver", "highlighted": False},
     {"name": "QR", "type": "financial", "transactionVolume": 30248,
      "totalValue": 268061663.69, "target": 35000, "keyMessage": "", "highlighted": True},
-    {"name": "BALANCE INQUIRY & MINI STATEMENT", "type": "non-financial",
-     "transactionVolume": 18406, "totalValue": 0, "target": 20000, "keyMessage": "Non-financial service",
-     "highlighted": False},
     {"name": "RTP", "type": "financial", "transactionVolume": 5400,
      "totalValue": 1850000000.00, "target": 6000, "keyMessage": "", "highlighted": False},
     {"name": "NPG (CARD AND ONLINE)", "type": "financial", "transactionVolume": 21203,
@@ -510,8 +510,8 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
         rows.append("<tr" + tr_class + ">" + svc
                     + '<td class="num-cell">' + perf + "</td>"
                     + '<td class="num-cell">' + target + "</td>"
-                    + '<td class="num-cell">' + ach + "</td>"
                     + '<td class="num-cell">' + tot + "</td>"
+                    + '<td class="num-cell">' + ach + "</td>"
                     + '<td class="num-cell">' + avg + "</td>"
                     + key_msg + "</tr>")
 
@@ -524,8 +524,8 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
                  '<td><div class="svc-cell"><span class="svc-name">TOTAL</span></div></td>'
                  '<td class="num-cell"><div class="num-primary num-total">' + fmt_int(tot["performance"]) + "</div></td>"
                  '<td class="num-cell"><div class="num-primary num-total">' + fmt_int(tot["target"]) + "</div></td>"
-                 '<td class="num-cell"><div class="num-primary num-total">' + tot_ach + "</div></td>"
                  '<td class="num-cell"><div class="num-primary num-total">ETB ' + fmt_dec(tot["totalValue"]) + "</div></td>"
+                 '<td class="num-cell"><div class="num-primary num-total">' + tot_ach + "</div></td>"
                  '<td class="num-cell"><div class="num-dash">-</div></td>'
                  '<td class="msg-cell"></td></tr>')
 
@@ -536,10 +536,10 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
              '<i data-lucide="hash"></i></span>PERFORMANCE</span></th>'
              '<th class="th-target"><span class="th-inner th-num"><span class="th-icon th-icon-purple">'
              '<i data-lucide="target"></i></span>MONTHLY PLAN (TARGET)</span></th>'
-             '<th class="th-ach"><span class="th-inner th-num"><span class="th-icon th-icon-green">'
-             '<i data-lucide="trending-up"></i></span>ACHIEVEMENT %</span></th>'
              '<th class="th-value"><span class="th-inner th-num"><span class="th-icon th-icon-teal">'
              '<i data-lucide="wallet"></i></span>TOTAL VALUE (ETB)</span></th>'
+             '<th class="th-ach"><span class="th-inner th-num"><span class="th-icon th-icon-green">'
+             '<i data-lucide="trending-up"></i></span>ACHIEVEMENT %</span></th>'
              '<th class="th-avg"><span class="th-inner th-num"><span class="th-icon th-icon-green">'
              '<i data-lucide="trending-up"></i></span>AVG TRANSACTION VALUE (ETB)</span></th>'
              '<th class="th-message"><span class="th-inner"><span class="th-icon th-icon-purple">'

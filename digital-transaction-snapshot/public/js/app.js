@@ -434,7 +434,7 @@
       }
       tdMsg += '</td>';
 
-      tr.innerHTML = tdSvc + tdPerf + tdTarget + tdAch + tdVal + tdAvg + tdMsg;
+      tr.innerHTML = tdSvc + tdPerf + tdTarget + tdVal + tdAch + tdAvg + tdMsg;
       tbody.appendChild(tr);
     }
 
@@ -444,8 +444,8 @@
       return '<td><div class="svc-cell"><span class="svc-name">TOTAL</span></div></td>' +
         '<td class="num-cell"><div class="num-primary num-total">' + fmtNum(tot.performance) + '</div></td>' +
         '<td class="num-cell"><div class="num-primary num-total">' + fmtNum(tot.target) + '</div></td>' +
-        '<td class="num-cell"><div class="num-primary num-total">' + achText + '</div></td>' +
         '<td class="num-cell"><div class="num-primary num-total">ETB ' + fmtDecimal(tot.totalValue) + '</div></td>' +
+        '<td class="num-cell"><div class="num-primary num-total">' + achText + '</div></td>' +
         '<td class="num-cell"><div class="num-dash">-</div></td>' +
         '<td class="msg-cell"></td>';
     }

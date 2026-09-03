@@ -58,6 +58,18 @@ const defaultServices = [
     highlightStyle: ''
   },
   {
+    id: 'balance-inquiry',
+    name: 'BALANCE INQUIRY & MINI STATEMENT',
+    icon: 'landmark',
+    type: 'non-financial',
+    transactionVolume: 18406,
+    totalValue: 0,
+    target: 20000,
+    keyMessage: 'Non-financial service',
+    highlighted: false,
+    highlightStyle: ''
+  },
+  {
     id: 'pos-purchase',
     name: 'POS PURCHASE',
     icon: 'credit-card',
@@ -92,18 +104,6 @@ const defaultServices = [
     keyMessage: '',
     highlighted: true,
     highlightStyle: 'orange'
-  },
-  {
-    id: 'balance-inquiry',
-    name: 'BALANCE INQUIRY & MINI STATEMENT',
-    icon: 'landmark',
-    type: 'non-financial',
-    transactionVolume: 18406,
-    totalValue: 0,
-    target: 20000,
-    keyMessage: 'Non-financial service',
-    highlighted: false,
-    highlightStyle: ''
   },
   {
     id: 'rtp',

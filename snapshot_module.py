@@ -106,7 +106,7 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 }
 .toolbar button:hover { border-color: #F4511E; color: #F4511E; }
 .report-landscape {
-  width: 1038px; height: 735px; background: #ffffff; margin: 0 auto;
+  width: 1038px; background: #ffffff; margin: 0 auto;
   display: flex; flex-direction: column; overflow: hidden;
   box-shadow: 0 4px 24px rgba(11,42,91,0.12), 0 1px 4px rgba(0,0,0,0.06);
   border: 1px solid #e5e7eb;
@@ -153,9 +153,9 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
   background: rgba(255,255,255,.1); padding: 2px 10px; border-radius: 4px;
   border: 1px solid rgba(255,255,255,.15); }
 .report-table-wrapper { flex: 1; overflow: hidden; }
-.report-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.report-table { width: 100%; border-collapse: collapse; font-size: 10px; }
 .report-table thead tr { background: #0B2A5B; color: #fff; }
-.report-table th { padding: 5px 8px; font-size: 8px; font-weight: 700; letter-spacing: 1px;
+.report-table th { padding: 4px 6px; font-size: 7.5px; font-weight: 700; letter-spacing: 0.8px;
   text-transform: uppercase; text-align: left; white-space: nowrap; }
 .th-inner { display: flex; align-items: center; gap: 4px; }
 .th-num { justify-content: flex-end; }
@@ -167,14 +167,14 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .th-icon-green { background: #2f9e62; }
 .th-icon-teal { background: #156e8a; }
 .th-icon svg { width: 9px; height: 9px; }
-.th-service { width: 17%; }
-.th-volume { width: 12%; text-align: right; }
-.th-target { width: 13%; text-align: right; }
-.th-ach { width: 12%; text-align: right; }
+.th-service { width: 16%; }
+.th-volume { width: 11%; text-align: right; }
+.th-target { width: 12%; text-align: right; }
+.th-ach { width: 11%; text-align: right; }
 .th-value { width: 15%; text-align: right; }
 .th-avg { width: 18%; text-align: right; }
-.th-message { width: 13%; text-align: left; }
-.report-table td { padding: 4px 8px; vertical-align: middle; border-bottom: 1px solid #eef1f5; height: 30px; }
+.th-message { width: 17%; text-align: left; }
+.report-table td { padding: 3px 6px; vertical-align: middle; border-bottom: 1px solid #eef1f5; height: 26px; }
 .report-table tbody tr:last-child td { border-bottom: none; }
 .report-table tbody tr:nth-child(even) { background: #fafbfc; }
 .report-table tbody tr.highlight-row { background: #FFF3E0 !important; }
@@ -192,10 +192,10 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .svc-icon.smartphone { background: #fde8e8; color: #c0392b; }
 .svc-icon.default { background: #d9e2f0; color: #0B2A5B; }
 .svc-icon svg { width: 12px; height: 12px; }
-.svc-name { font-weight: 700; color: #0B2A5B; font-size: 10px; letter-spacing: .2px; line-height: 1.15; }
+.svc-name { font-weight: 700; color: #0B2A5B; font-size: 9px; letter-spacing: .2px; line-height: 1.15; }
 .highlight-row .svc-name { color: #F4511E; }
 .num-cell { text-align: right; font-variant-numeric: tabular-nums; }
-.num-primary { font-weight: 700; font-size: 11px; color: #0B2A5B; line-height: 1.15; }
+.num-primary { font-weight: 700; font-size: 10px; color: #0B2A5B; line-height: 1.15; }
 .highlight-row .num-primary { color: #F4511E; }
 .num-dash { color: #9ca3af; font-style: italic; }
 .num-total { color: #F4511E; font-weight: 800; }
@@ -234,6 +234,32 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .footer-tagline { font-size: 8px; color: rgba(255,255,255,.55); margin-left: 8px; font-style: italic; }
 .footer-web { display: flex; align-items: center; gap: 5px; font-size: 9px; color: rgba(255,255,255,.7); }
 .footer-web svg { width: 12px; height: 12px; }
+/* --- Acquirer Section --- */
+.acquirer-section { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 12px 10px; background: #f6f8fc; border-top: 2px solid #0B2A5B; }
+.acq-card { background: #fff; border-radius: 8px; padding: 10px 12px; border: 1px solid #e5e7eb; }
+.acq-card-atm { border-left: 3px solid #0B2A5B; }
+.acq-card-pos { border-left: 3px solid #F4511E; }
+.acq-card-ips-send { border-left: 3px solid #7a4fa0; }
+.acq-card-ips-recv { border-left: 3px solid #156e8a; }
+.acq-card-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.acq-card-icon { width: 18px; height: 18px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.acq-card-icon svg { width: 10px; height: 10px; }
+.acq-icon-atm { background: #0B2A5B; color: #fff; }
+.acq-icon-pos { background: #F4511E; color: #fff; }
+.acq-icon-ips { background: #7a4fa0; color: #fff; }
+.acq-icon-ips-r { background: #156e8a; color: #fff; }
+.acq-card-title { font-size: 8px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #0B2A5B; }
+.acq-card-subtitle { font-size: 7px; color: #9ca3af; letter-spacing: 0.5px; }
+.acq-list { list-style: none; margin: 0; padding: 0; }
+.acq-list li { display: flex; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid #f0f2f5; font-size: 9px; }
+.acq-list li:last-child { border-bottom: none; }
+.acq-rank { width: 14px; height: 14px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 800; color: #fff; flex-shrink: 0; }
+.acq-rank-1 { background: linear-gradient(135deg, #F4511E, #ff7a3d); }
+.acq-rank-2 { background: linear-gradient(135deg, #0B2A5B, #1e3a6b); }
+.acq-rank-3 { background: linear-gradient(135deg, #7a4fa0, #9b6fc0); }
+.acq-bank-name { font-weight: 700; color: #0B2A5B; flex: 1; }
+.acq-count { color: #6b7280; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.acq-pct { color: #9ca3af; font-size: 8px; white-space: nowrap; }
 @media print {
   .toolbar, .toolbar * { display: none !important; }
   body { background: #fff !important; }
@@ -456,8 +482,17 @@ def _takeaway(qr, volume_leader, feas):
             + "and user education could drive higher-value transactions over time.")
 
 
-def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeaway_override=""):
-    """Render the 1038x735 landscape report as a self-contained HTML string."""
+def build_report_html(report, calc, show_bars=True, auto_highlight=True,
+                      takeaway_override="", acquirer_data=None):
+    """Render the landscape report as a self-contained HTML string.
+
+    *acquirer_data* is an optional dict with keys:
+        "atm"      -> AcquirerResult (from acquirer_analysis.analyze_atm)
+        "pos"      -> AcquirerResult
+        "ips"      -> IpsResult      (from acquirer_analysis.analyze_ips)
+    When provided a dedicated acquirer card section is appended below the
+    insights row.
+    """
     services = calc["services"]
     highest_avg = calc["highestAvg"]
     highest_avg_name = highest_avg.get("name") if highest_avg else None
@@ -603,17 +638,103 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True, takeawa
               '<span class="footer-tagline">' + _esc(report.get("tagline1")) + "</span></div>"
               '<div class="footer-web"><i data-lucide="globe"></i><span>www.ethswitch.et</span></div></div>')
 
+    # --- Acquirer section (optional) ---
+    acquirer_html = ""
+    if acquirer_data:
+        cards = []
+        # ATM top 3
+        atm_res = acquirer_data.get("atm")
+        if atm_res and atm_res.top3:
+            items = []
+            for i, b in enumerate(atm_res.top3):
+                rank_cls = f"acq-rank-{i + 1}" if i < 3 else ""
+                items.append(
+                    '<li><span class="acq-rank ' + rank_cls + '">' + str(i + 1) + '</span>'
+                    '<span class="acq-bank-name">' + _esc(b.name) + '</span>'
+                    '<span class="acq-count">' + f"{b.count:,}" + '</span>'
+                    '<span class="acq-pct">' + f"{b.percentage:.1f}%" + '</span></li>'
+                )
+            cards.append(
+                '<div class="acq-card acq-card-atm">'
+                '<div class="acq-card-header"><div class="acq-card-icon acq-icon-atm">'
+                '<i data-lucide="landmark"></i></div>'
+                '<div><div class="acq-card-title">TOP 3 ATM ACQUIRERS</div>'
+                '<div class="acq-card-subtitle">' + f"{atm_res.total:,}" + ' cash withdrawal txns</div></div></div>'
+                '<ul class="acq-list">' + "".join(items) + '</ul></div>'
+            )
+        # POS top 3
+        pos_res = acquirer_data.get("pos")
+        if pos_res and pos_res.top3:
+            items = []
+            for i, b in enumerate(pos_res.top3):
+                rank_cls = f"acq-rank-{i + 1}" if i < 3 else ""
+                items.append(
+                    '<li><span class="acq-rank ' + rank_cls + '">' + str(i + 1) + '</span>'
+                    '<span class="acq-bank-name">' + _esc(b.name) + '</span>'
+                    '<span class="acq-count">' + f"{b.count:,}" + '</span>'
+                    '<span class="acq-pct">' + f"{b.percentage:.1f}%" + '</span></li>'
+                )
+            cards.append(
+                '<div class="acq-card acq-card-pos">'
+                '<div class="acq-card-header"><div class="acq-card-icon acq-icon-pos">'
+                '<i data-lucide="credit-card"></i></div>'
+                '<div><div class="acq-card-title">TOP 3 POS ACQUIRERS</div>'
+                '<div class="acq-card-subtitle">' + f"{pos_res.total:,}" + ' purchase txns</div></div></div>'
+                '<ul class="acq-list">' + "".join(items) + '</ul></div>'
+            )
+        # IPS senders
+        ips_res = acquirer_data.get("ips")
+        if ips_res and ips_res.top3_senders:
+            items = []
+            for i, b in enumerate(ips_res.top3_senders):
+                rank_cls = f"acq-rank-{i + 1}" if i < 3 else ""
+                items.append(
+                    '<li><span class="acq-rank ' + rank_cls + '">' + str(i + 1) + '</span>'
+                    '<span class="acq-bank-name">' + _esc(b.name) + '</span>'
+                    '<span class="acq-count">' + f"{b.count:,}" + ' txns</span></li>'
+                )
+            cards.append(
+                '<div class="acq-card acq-card-ips-send">'
+                '<div class="acq-card-header"><div class="acq-card-icon acq-icon-ips">'
+                '<i data-lucide="send"></i></div>'
+                '<div><div class="acq-card-title">TOP 3 IPS SENDERS</div>'
+                '<div class="acq-card-subtitle">' + f"{ips_res.total_banks}" + ' banks total</div></div></div>'
+                '<ul class="acq-list">' + "".join(items) + '</ul></div>'
+            )
+        # IPS receivers
+        if ips_res and ips_res.top3_receivers:
+            items = []
+            for i, b in enumerate(ips_res.top3_receivers):
+                rank_cls = f"acq-rank-{i + 1}" if i < 3 else ""
+                items.append(
+                    '<li><span class="acq-rank ' + rank_cls + '">' + str(i + 1) + '</span>'
+                    '<span class="acq-bank-name">' + _esc(b.name) + '</span>'
+                    '<span class="acq-count">' + f"{b.count:,}" + ' txns</span></li>'
+                )
+            cards.append(
+                '<div class="acq-card acq-card-ips-recv">'
+                '<div class="acq-card-header"><div class="acq-card-icon acq-icon-ips-r">'
+                '<i data-lucide="download"></i></div>'
+                '<div><div class="acq-card-title">TOP 3 IPS RECEIVERS</div>'
+                '<div class="acq-card-subtitle">' + f"{ips_res.total_banks}" + ' banks total</div></div></div>'
+                '<ul class="acq-list">' + "".join(items) + '</ul></div>'
+            )
+        if cards:
+            acquirer_html = '<div class="acquirer-section">' + "".join(cards) + '</div>'
+
+    report_height = 735 + (160 if acquirer_html else 0)
+
     return ("<!DOCTYPE html><html><head><meta charset='utf-8'/><style>" + REPORT_CSS + "</style>"
             "<script src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'></script>"
             "<script src='https://unpkg.com/lucide@latest'></script></head><body>"
             "<div class='toolbar'>"
             "<button onclick='window.print()'>Print / Save as PDF</button>"
             "<button onclick='capturePNG()'>Download PNG</button></div>"
-            "<div id='report-content'>" + header + table + insights + footer + "</div>"
+            "<div id='report-content'>" + header + table + insights + acquirer_html + footer + "</div>"
             "<script>lucide.createIcons();"
             "function capturePNG(){var t=document.querySelector('.toolbar');var e=document.getElementById('report-content');"
             "t.style.visibility='hidden';"
-            "html2canvas(e,{scale:2,useCORS:true,backgroundColor:'#ffffff',windowWidth:1038,windowHeight:735})"
+            "html2canvas(e,{scale:2,useCORS:true,backgroundColor:'#ffffff',windowWidth:1038,windowHeight:" + str(report_height) + "})"
             ".then(function(c){t.style.visibility='visible';var a=document.createElement('a');"
             "a.download='Digital_Transaction_Value_Snapshot.png';a.href=c.toDataURL('image/png');a.click();})"
             ".catch(function(err){t.style.visibility='visible';"

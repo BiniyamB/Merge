@@ -18,6 +18,7 @@ st.set_page_config(
 from merger import MODES, merge_reports, build_filtered_workbook, build_workbook
 
 from snapshot_module import REPORT_DEFAULTS, SERVICE_DEFAULTS, calc_all, build_report_html, fmt_int
+from acquirer_analysis import analyze_atm, analyze_pos, analyze_ips
 
 # ── Global CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
@@ -294,8 +295,8 @@ def _render_snapshot_page():
             "transactionVolume": st.column_config.NumberColumn(
                 "Performance", min_value=0.0, step=0.01, format="%.2f", width="small"),
             "totalValue": st.column_config.NumberColumn(
-                "Total Value (ETB)", min_value=0.0, step=1000.0, format="%.2f", width="small"),
-            "keyMessage": st.column_config.TextColumn("Key Message", width="large"),
+                "Total Value (ETB)", min_value=0.0, step=0.01, format="%.2f", width="large"),
+            "keyMessage": st.column_config.TextColumn("Key Message", width="medium"),
             "highlighted": st.column_config.CheckboxColumn("Highlight", width="small"),
         },
     )
@@ -321,13 +322,83 @@ def _render_snapshot_page():
     calc = calc_all(services)
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── Top Acquirer Report Uploads ──────────────────────────────────────────
+    st.markdown('<div class="section-sep"><span>Top Acquirer Analysis</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-purple">&#128200;</div>'
+                '<div><p class="card-title">Upload raw reports for Top 3 Acquirer analysis</p>'
+                '<p class="card-sub">ATM (daily), POS (daily) and IPS (source/destination) &mdash; '
+                'the system analyses cash withdrawals, POS purchases and IPS transaction counts</p>'
+                '</div></div>', unsafe_allow_html=True)
+
+    acq_col1, acq_col2, acq_col3 = st.columns(3)
+    with acq_col1:
+        atm_file = st.file_uploader("ATM Daily Report", type=["xls", "xlsx"], key="snap_atm_file")
+    with acq_col2:
+        pos_file = st.file_uploader("POS Daily Report", type=["xls", "xlsx"], key="snap_pos_file")
+    with acq_col3:
+        ips_file = st.file_uploader("IPS Source & Destination", type=["xls", "xlsx"], key="snap_ips_file")
+
+    acquirer_data = {}
+    acq_warnings = []
+
+    if atm_file:
+        with st.spinner("Analysing ATM report..."):
+            atm_result = analyze_atm(atm_file.getvalue(), atm_file.name)
+        acquirer_data["atm"] = atm_result
+        acq_warnings.extend(atm_result.warnings)
+    if pos_file:
+        with st.spinner("Analysing POS report..."):
+            pos_result = analyze_pos(pos_file.getvalue(), pos_file.name)
+        acquirer_data["pos"] = pos_result
+        acq_warnings.extend(pos_result.warnings)
+    if ips_file:
+        with st.spinner("Analysing IPS report..."):
+            ips_result = analyze_ips(ips_file.getvalue(), ips_file.name)
+        acquirer_data["ips"] = ips_result
+        acq_warnings.extend(ips_result.warnings)
+
+    if acq_warnings:
+        for w in acq_warnings:
+            st.warning(w)
+
+    # Show quick summary of analysis results
+    if acquirer_data:
+        summary_cols = st.columns(4)
+        with summary_cols[0]:
+            if "atm" in acquirer_data and acquirer_data["atm"].top3:
+                names = ", ".join(b.name for b in acquirer_data["atm"].top3)
+                st.metric("Top ATM Acquirers", names)
+            else:
+                st.metric("Top ATM Acquirers", "No data")
+        with summary_cols[1]:
+            if "pos" in acquirer_data and acquirer_data["pos"].top3:
+                names = ", ".join(b.name for b in acquirer_data["pos"].top3)
+                st.metric("Top POS Acquirers", names)
+            else:
+                st.metric("Top POS Acquirers", "No data")
+        with summary_cols[2]:
+            if "ips" in acquirer_data and acquirer_data["ips"].top3_senders:
+                names = ", ".join(b.name for b in acquirer_data["ips"].top3_senders)
+                st.metric("Top IPS Senders", names)
+            else:
+                st.metric("Top IPS Senders", "No data")
+        with summary_cols[3]:
+            if "ips" in acquirer_data and acquirer_data["ips"].top3_receivers:
+                names = ", ".join(b.name for b in acquirer_data["ips"].top3_receivers)
+                st.metric("Top IPS Receivers", names)
+            else:
+                st.metric("Top IPS Receivers", "No data")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
     st.markdown('<div class="section-sep"><span>Live Preview</span></div>', unsafe_allow_html=True)
     st.caption("The report updates live. Use the buttons inside the preview to print (save as PDF) "
                "or download as PNG. Icons and image export load from CDNs, so an internet connection is required.")
     components.html(
         build_report_html(report, calc, show_bars=show_bars, auto_highlight=auto_hl,
-                          takeaway_override=takeaway_override),
-        height=860,
+                          takeaway_override=takeaway_override,
+                          acquirer_data=acquirer_data if acquirer_data else None),
+        height=860 + (180 if acquirer_data else 0),
         scrolling=True,
     )
 

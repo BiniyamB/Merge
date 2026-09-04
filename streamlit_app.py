@@ -20,6 +20,7 @@ from merger import MODES, merge_reports, build_filtered_workbook, build_workbook
 from snapshot_module import REPORT_DEFAULTS, SERVICE_DEFAULTS, calc_all, build_report_html, fmt_int
 from acquirer_analysis import analyze_atm, analyze_pos, analyze_ips
 from nbe_report import generate_nbe_report, build_nbe_report_excel
+from pos_success_rate import generate_pos_success_rate_report, build_pos_success_rate_excel
 
 # ── Global CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
@@ -701,6 +702,48 @@ if meta["mode_key"] in ("pos", "atm"):
                 key="dl_nbe_actual",
             )
             del nbe_excel_bytes
+            gc.collect()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ── POS Success Rate Summary Report (POS modes only) ──────────────────────────
+if meta["mode_key"] in ("pos", "pos_decline", "pos_success"):
+    st.markdown('<div class="section-sep"><span>POS Success Rate Report</span></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-green">&#128200;</div>'
+        '<div><p class="card-title">POS Transaction Decline &amp; Success Rate Summary (Issuer View)</p>'
+        '<p class="card-sub">Response code matrix grouped strictly by ISSUER institutions, including Cardholder-Related Declines '
+        '(RC 821, 901, 904, 906, 911, 912, 914, 915), Total Success, Total Attempted Transactions &amp; Adjusted Success Rate %</p></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    matrix_df, desc_df = generate_pos_success_rate_report(st.session_state.records)
+
+    st.dataframe(
+        matrix_df,
+        use_container_width=True,
+        hide_index=True,
+        height=380,
+    )
+
+    with st.expander("Response Code Descriptions & Remarks Lookup Table", expanded=False):
+        st.dataframe(desc_df, use_container_width=True, hide_index=True)
+
+    col_sr_dl1, col_sr_dl2 = st.columns(2)
+    with col_sr_dl1:
+        if st.button("Download POS Success Rate Report", use_container_width=True, key="dl_sr_btn"):
+            with st.spinner("Building POS Success Rate workbook..."):
+                sr_excel_bytes = build_pos_success_rate_excel(matrix_df, desc_df)
+            sr_filename = f"POS_Success_Rate_Report_Issuer_{meta['from_date']}_to_{meta['to_date']}.xlsx"
+            st.download_button(
+                label="Click to save POS Success Rate Report",
+                data=sr_excel_bytes,
+                file_name=sr_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dl_sr_actual",
+            )
+            del sr_excel_bytes
             gc.collect()
 
     st.markdown('</div>', unsafe_allow_html=True)

@@ -13,7 +13,6 @@ from typing import Any
 
 import pandas as pd
 import openpyxl
-from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -70,11 +69,11 @@ def parse_rc(val: Any) -> str:
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return ""
     s = str(val).strip()
-    if s in ("-1", "-1.0", "00", "0"):
+    if s in ("-1", "-1.0"):
         return "-1"
     try:
         f = float(s)
-        if f in (-1.0, 0.0):
+        if f == -1.0:
             return "-1"
         if f.is_integer():
             return str(int(f))
@@ -84,31 +83,25 @@ def parse_rc(val: Any) -> str:
 
 
 def get_rate_style(rate: float) -> tuple[PatternFill, Font]:
-    """Return PatternFill and Font according to Success Rate % tier rules:
-    - 97% - 100%: Green
-    - 86% - 96%: Yellow
-    - 79% - 85%: Light Yellow
-    - <= 78%: Red
+    """Return PatternFill and Font according to Success Rate % tier rules matching POS SUCCESS RATE template:
+    - 97% - 100%: Green (#00B050)
+    - 86% - 96%: Yellow (#FFFF00)
+    - <= 85%: Red (#FF0000)
     """
     if rate >= 0.97:
         return (
-            PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),
-            Font(name="Arial", size=10, bold=True, color="006100"),
+            PatternFill(start_color="00B050", end_color="00B050", fill_type="solid"),
+            Font(name="Arial", size=10, bold=True, color="000000"),
         )
     elif rate >= 0.86:
         return (
-            PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"),
-            Font(name="Arial", size=10, bold=True, color="9C6500"),
-        )
-    elif rate >= 0.79:
-        return (
-            PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"),
-            Font(name="Arial", size=10, bold=True, color="7F6000"),
+            PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid"),
+            Font(name="Arial", size=10, bold=True, color="000000"),
         )
     else:
         return (
-            PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),
-            Font(name="Arial", size=10, bold=True, color="9C0006"),
+            PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid"),
+            Font(name="Arial", size=10, bold=True, color="FFFFFF"),
         )
 
 
@@ -123,8 +116,15 @@ def generate_pos_success_rate_report(records: list[dict[str, Any]]) -> tuple[pd.
         )
         return empty_matrix, desc_df
 
+    valid_pos_types = {"pos purchase", "purchase"}
+
     parsed_rows = []
     for r in records:
+        # Filter by transaction type if TRANS_TYPE column is present (matching NBE logic)
+        t_type = str(r.get("TRANS_TYPE", "")).strip().lower()
+        if t_type and t_type not in valid_pos_types:
+            continue
+
         iss = normalize_nbe_bank(r.get("ISSUER"))
         if not iss:
             continue
@@ -164,7 +164,7 @@ def generate_pos_success_rate_report(records: list[dict[str, Any]]) -> tuple[pd.
         rc = row["rc"]
         if iss not in issuers:
             continue
-        if rc in ("-1", ""):
+        if rc == "-1":
             success_counts[iss] += 1
         elif rc in matrix_counts:
             matrix_counts[rc][iss] += 1
@@ -443,12 +443,12 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame)
             tot_cell.font = bold_font
             tot_cell.fill = summary_fill
         elif label == "total succ":
-            tot_cell.value = f"=SUM(B{r_tot_succ}:{last_bank_let}{r_tot_succ})"
+            tot_cell.value = f"={tot_col_let}{r_succ_pos}+{tot_col_let}{r_ch_dec}"
             tot_cell.number_format = "#,##0"
             tot_cell.font = bold_font
             tot_cell.fill = summary_fill
         elif label == "total pos t":
-            tot_cell.value = f"=SUM(B{r_tot_pos}:{last_bank_let}{r_tot_pos})"
+            tot_cell.value = f"={tot_col_let}{r_tot_dec}+{tot_col_let}{r_succ_pos}"
             tot_cell.number_format = "#,##0"
             tot_cell.font = bold_font
             tot_cell.fill = summary_fill
@@ -477,18 +477,6 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame)
         hdr_c.border = thick_bottom if label == "total pos t" else thin_border
 
         ws.row_dimensions[row_idx].height = 19
-
-    # Add openpyxl dynamic conditional formatting rules to row r_rate
-    rate_range_str = f"B{r_rate}:{tot_col_let}{r_rate}"
-    rule_green = CellIsRule(operator="greaterThanOrEqual", formula=["0.97"], fill=PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"), font=Font(name=font_family, size=10, bold=True, color="006100"))
-    rule_yellow = CellIsRule(operator="between", formula=["0.86", "0.969999"], fill=PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"), font=Font(name=font_family, size=10, bold=True, color="9C6500"))
-    rule_lyellow = CellIsRule(operator="between", formula=["0.79", "0.859999"], fill=PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"), font=Font(name=font_family, size=10, bold=True, color="7F6000"))
-    rule_red = CellIsRule(operator="lessThanOrEqual", formula=["0.789999"], fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"), font=Font(name=font_family, size=10, bold=True, color="9C0006"))
-
-    ws.conditional_formatting.add(rate_range_str, rule_green)
-    ws.conditional_formatting.add(rate_range_str, rule_yellow)
-    ws.conditional_formatting.add(rate_range_str, rule_lyellow)
-    ws.conditional_formatting.add(rate_range_str, rule_red)
 
     # Row + 3: Response Code Reference Table Header
     ref_start_row = r_tot_pos + 3

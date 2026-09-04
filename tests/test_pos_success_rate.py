@@ -17,7 +17,7 @@ def test_parse_rc():
     """Verify response code string normalization."""
     assert parse_rc("-1") == "-1"
     assert parse_rc("-1.0") == "-1"
-    assert parse_rc(0) == "-1"
+    assert parse_rc(0) == "0"
     assert parse_rc("901") == "901"
     assert parse_rc("901.0") == "901"
     assert parse_rc(915.0) == "915"
@@ -140,8 +140,8 @@ def test_build_pos_success_rate_excel():
     assert str(ws.cell(row=tot_dec_row, column=3).value).startswith("=SUM(")
     assert str(ws.cell(row=succ_rate_row, column=3).value).startswith("=IF(")
 
-    # Check success rate row formatting & fill color (Awash rate = 2/2 = 100% -> Green fill C6EFCE)
+    # Check success rate row formatting & fill color (Awash rate = 2/2 = 100% -> Green fill 00B050)
     rate_cell = ws.cell(row=succ_rate_row, column=2)
     assert rate_cell.number_format == "0.00%"
-    assert rate_cell.fill.start_color.rgb == "00C6EFCE" or rate_cell.fill.start_color.rgb == "C6EFCE"
+    assert rate_cell.fill.start_color.rgb in ("0000B050", "00B050")
 

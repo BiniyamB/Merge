@@ -258,35 +258,73 @@ def generate_pos_success_rate_report(records: list[dict[str, Any]]) -> tuple[pd.
     return matrix_df, desc_df
 
 
-def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame) -> bytes:
+# Short display names for bank headers (matching POS SUCCESS RATE reference format)
+_SHORT_BANK_NAMES: dict[str, str] = {
+    "Abay Bank": "Abay",
+    "Addis Bank": "Adiss",
+    "Ahadu Bank": "Ahadu",
+    "Amhara Bank": "Amhara",
+    "Awash Bank": "AWASH",
+    "Birhan Bank": "BRB",
+    "BOA": "BOA",
+    "Bunna Bank": "BIB",
+    "CBE": "CBE",
+    "CBO": "CBO",
+    "Global Bank": "GB",
+    "Dashen Bank": "Dashen",
+    "Enat Bank": "Enat",
+    "Gadda Bank": "Gadda",
+    "Goh Betoch Bank": "GBetoch",
+    "Hibret Bank": "Hibret",
+    "Hijra Bank": "Hijra",
+    "Lion Bank": "Lion",
+    "Nib Bank": "NIB",
+    "Oromia Bank": "OB",
+    "Rammis Bank": "Rammis",
+    "Santim Pay": "Santim",
+    "Sinqee Bank": "Sinqee",
+    "Sidama Bank": "Sidama",
+    "Siket Bank": "Siket",
+    "Tseday Bank": "Tsedey",
+    "Tsehay Bank": "Tsehay",
+    "United Bank": "United",
+    "Wegagen Bank": "WGB",
+    "Yagout Pay": "Yagout",
+    "Zamzam Bank": "Zamzam",
+    "Zemen Bank": "Zemen",
+}
+
+
+def _short_bank_name(full_name: str) -> str:
+    """Return short display name for a bank."""
+    return _SHORT_BANK_NAMES.get(full_name, full_name)
+
+
+def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame, report_date: str = "") -> bytes:
     """Build formatted Excel workbook matching POS SUCCESS RATE layout with live Excel formulas
     and tier-based conditional color coding for success rates.
+
+    Args:
+        matrix_df: Response code matrix DataFrame.
+        desc_df: Response code descriptions DataFrame.
+        report_date: Date string for the report title (e.g. "September 2, 2026").
     """
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "POS SUCCESS RATE"
 
-    font_family = "Arial"
+    font_family = "Calibri"
 
-    header_title_font = Font(name=font_family, size=13, bold=True, color="FFFFFF")
-    header_title_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-
-    hdr_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-    hdr_font = Font(name=font_family, size=10, bold=True, color="1F4E78")
-
-    data_font = Font(name=font_family, size=10)
-    bold_font = Font(name=font_family, size=10, bold=True)
-    summary_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+    header_title_font = Font(name=font_family, size=14, bold=True)
+    hdr_font = Font(name=font_family, size=11, bold=True)
+    data_font = Font(name=font_family, size=11)
+    bold_font = Font(name=font_family, size=11, bold=True)
 
     thin_border = Border(
-        left=Side(style="thin", color="D9D9D9"),
-        right=Side(style="thin", color="D9D9D9"),
-        top=Side(style="thin", color="D9D9D9"),
-        bottom=Side(style="thin", color="D9D9D9"),
-    )
-    thick_bottom = Border(
-        top=Side(style="thin", color="000000"),
-        bottom=Side(style="double", color="000000"),
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
     )
 
     num_cols = len(matrix_df.columns)
@@ -294,30 +332,27 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame)
     last_bank_let = get_column_letter(last_bank_col_idx)
     tot_col_let = get_column_letter(num_cols)
 
-    # Row 1: Banner Title
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_cols)
-    title_cell = ws.cell(row=1, column=1)
-    title_cell.value = "Pos Transaction Decline Response & Success Rate Summary (Issuer View)"
+    # --- Row 1: empty, Rows 2-4: merged title (matching reference format) ---
+    title_text = f"{report_date} Pos Transaction Decline Response Summary" if report_date else "Pos Transaction Decline Response Summary"
+    ws.merge_cells(start_row=2, start_column=1, end_row=4, end_column=num_cols)
+    title_cell = ws.cell(row=2, column=1)
+    title_cell.value = title_text
     title_cell.font = header_title_font
-    title_cell.fill = header_title_fill
     title_cell.alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[1].height = 28
 
-    # Row 3: Header
+    # --- Row 5: Header ---
     for col_idx, col_name in enumerate(matrix_df.columns, start=1):
-        cell = ws.cell(row=3, column=col_idx, value=col_name)
+        display_name = _short_bank_name(col_name) if col_idx > 1 else col_name
+        cell = ws.cell(row=5, column=col_idx, value=display_name)
         cell.font = hdr_font
-        cell.fill = hdr_fill
         cell.alignment = Alignment(horizontal="center" if col_idx > 1 else "left", vertical="center")
         cell.border = thin_border
-    ws.row_dimensions[3].height = 22
+    ws.row_dimensions[5].height = 22
 
-    # Map row indices for formulas
-    # Row 4 is first decline code
+    # --- Map row indices for formulas ---
     rc_row_map: dict[str, int] = {}
-    current_row = 4
+    current_row = 6  # First data row
 
-    # Extract RC rows from matrix_df
     decline_rows_count = len(matrix_df) - 6  # 6 summary rows at the end
 
     for i in range(decline_rows_count):
@@ -325,9 +360,11 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame)
         rc_row_map[rc_code] = current_row
         current_row += 1
 
-    r_start = 4
-    r_end = current_row - 1 if decline_rows_count > 0 else 4
+    r_start = 6
+    r_end = current_row - 1 if decline_rows_count > 0 else 6
 
+    # Summary rows follow the reference order:
+    # Total Decline, Successful Pos T, success rate, card holder rel dec, total succ, total pos t
     r_tot_dec = current_row
     current_row += 1
 
@@ -349,7 +386,7 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame)
     # Find row numbers for cardholder RCs that exist in the dataset
     ch_row_nums = [rc_row_map[rc] for rc in CARDHOLDER_RC if rc in rc_row_map]
 
-    # Populate Data & Formulas into openpyxl Sheet
+    # --- Populate Data & Formulas ---
     for idx, r in matrix_df.iterrows():
         label = str(r["RC/BANK NAME"])
 
@@ -385,12 +422,10 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame)
                 cell.value = f"=SUM({col_let}{r_start}:{col_let}{r_end})" if decline_rows_count > 0 else 0
                 cell.number_format = "#,##0"
                 cell.font = bold_font
-                cell.fill = summary_fill
             elif label == "Successful Pos T":
                 cell.value = int(r.iloc[col_idx - 1])
                 cell.number_format = "#,##0"
                 cell.font = bold_font
-                cell.fill = summary_fill
             elif label == "card holder rel dec":
                 if ch_row_nums:
                     cell.value = f"={'+'.join(f'{col_let}{r_n}' for r_n in ch_row_nums)}"
@@ -398,27 +433,23 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame)
                     cell.value = 0
                 cell.number_format = "#,##0"
                 cell.font = bold_font
-                cell.fill = summary_fill
             elif label == "total succ":
                 cell.value = f"={col_let}{r_succ_pos}+{col_let}{r_ch_dec}"
                 cell.number_format = "#,##0"
                 cell.font = bold_font
-                cell.fill = summary_fill
             elif label == "total pos t":
                 cell.value = f"={col_let}{r_tot_dec}+{col_let}{r_succ_pos}"
                 cell.number_format = "#,##0"
                 cell.font = bold_font
-                cell.fill = summary_fill
             elif label == "success rate":
-                cell.value = f"=IF({col_let}{r_tot_pos}>0, {col_let}{r_tot_succ}/{col_let}{r_tot_pos}, 0)"
-                cell.number_format = "0.00%"
-                # Apply 4-tier color styling based on pre-calculated rate
+                cell.value = f"={col_let}{r_tot_succ}/{col_let}{r_tot_pos}"
+                cell.number_format = "0%"
                 rate_val = float(r.iloc[col_idx - 1])
                 fill_style, font_style = get_rate_style(rate_val)
                 cell.fill = fill_style
                 cell.font = font_style
 
-            cell.border = thick_bottom if label == "total pos t" else thin_border
+            cell.border = thin_border
             cell.alignment = Alignment(horizontal="right", vertical="center")
 
         # Total Column (Col num_cols)
@@ -431,37 +462,31 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame)
             tot_cell.value = f"=SUM(B{r_tot_dec}:{last_bank_let}{r_tot_dec})"
             tot_cell.number_format = "#,##0"
             tot_cell.font = bold_font
-            tot_cell.fill = summary_fill
         elif label == "Successful Pos T":
             tot_cell.value = f"=SUM(B{r_succ_pos}:{last_bank_let}{r_succ_pos})"
             tot_cell.number_format = "#,##0"
             tot_cell.font = bold_font
-            tot_cell.fill = summary_fill
         elif label == "card holder rel dec":
             tot_cell.value = f"=SUM(B{r_ch_dec}:{last_bank_let}{r_ch_dec})"
             tot_cell.number_format = "#,##0"
             tot_cell.font = bold_font
-            tot_cell.fill = summary_fill
         elif label == "total succ":
             tot_cell.value = f"={tot_col_let}{r_succ_pos}+{tot_col_let}{r_ch_dec}"
             tot_cell.number_format = "#,##0"
             tot_cell.font = bold_font
-            tot_cell.fill = summary_fill
         elif label == "total pos t":
             tot_cell.value = f"={tot_col_let}{r_tot_dec}+{tot_col_let}{r_succ_pos}"
             tot_cell.number_format = "#,##0"
             tot_cell.font = bold_font
-            tot_cell.fill = summary_fill
         elif label == "success rate":
-            # Total Column success rate formula `=Total_total_succ / Total_total_pos_t`
-            tot_cell.value = f"=IF({tot_col_let}{r_tot_pos}>0, {tot_col_let}{r_tot_succ}/{tot_col_let}{r_tot_pos}, 0)"
-            tot_cell.number_format = "0.00%"
+            tot_cell.value = f"={tot_col_let}{r_tot_succ}/{tot_col_let}{r_tot_pos}"
+            tot_cell.number_format = "0%"
             tot_rate_val = float(r.iloc[num_cols - 1])
             t_fill_style, t_font_style = get_rate_style(tot_rate_val)
             tot_cell.fill = t_fill_style
             tot_cell.font = t_font_style
 
-        tot_cell.border = thick_bottom if label == "total pos t" else thin_border
+        tot_cell.border = thin_border
         tot_cell.alignment = Alignment(horizontal="right", vertical="center")
 
         # Column A Header cell formatting
@@ -472,35 +497,41 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame)
             tot_rate_val = float(r.iloc[num_cols - 1])
             f_st, _ = get_rate_style(tot_rate_val)
             hdr_c.fill = f_st
-        elif is_summary_label:
-            hdr_c.fill = summary_fill
-        hdr_c.border = thick_bottom if label == "total pos t" else thin_border
+        hdr_c.border = thin_border
 
         ws.row_dimensions[row_idx].height = 19
 
-    # Row + 3: Response Code Reference Table Header
+    # --- Response Code Reference Table ---
     ref_start_row = r_tot_pos + 3
     ws.cell(row=ref_start_row, column=1, value="Response Code Description & Remarks Reference Table").font = Font(name=font_family, size=11, bold=True)
     ref_start_row += 1
 
-    desc_cols = ["Response Code", "Description", "Remark"]
-    for c_idx, c_name in enumerate(desc_cols, start=1):
+    # Header row
+    for c_idx, c_name in enumerate(["Response Code", "Description", "", "Remark"], start=1):
         cell = ws.cell(row=ref_start_row, column=c_idx, value=c_name)
         cell.font = hdr_font
-        cell.fill = hdr_fill
         cell.border = thin_border
     ws.row_dimensions[ref_start_row].height = 20
     ref_start_row += 1
 
     for _, d_row in desc_df.iterrows():
-        ws.cell(row=ref_start_row, column=1, value=str(d_row["Response Code"])).alignment = Alignment(horizontal="center")
-        ws.cell(row=ref_start_row, column=2, value=str(d_row["Description"])).alignment = Alignment(horizontal="left")
-        ws.cell(row=ref_start_row, column=3, value=str(d_row["Remark"])).alignment = Alignment(horizontal="left")
+        rc_val = str(d_row["Response Code"])
+        ws.cell(row=ref_start_row, column=1, value=rc_val).alignment = Alignment(horizontal="center")
+        ws.cell(row=ref_start_row, column=1).font = data_font
+        ws.cell(row=ref_start_row, column=1).border = thin_border
 
-        for c_idx in range(1, 4):
-            c = ws.cell(row=ref_start_row, column=c_idx)
-            c.font = data_font
-            c.border = thin_border
+        # Description in col B, merged B:D
+        ws.merge_cells(start_row=ref_start_row, start_column=2, end_row=ref_start_row, end_column=4)
+        ws.cell(row=ref_start_row, column=2, value=str(d_row["Description"])).alignment = Alignment(horizontal="left")
+        ws.cell(row=ref_start_row, column=2).font = data_font
+        ws.cell(row=ref_start_row, column=2).border = thin_border
+
+        # Remark in col E, merged E:W
+        remark_end_col = max(5, min(num_cols, 23))
+        ws.merge_cells(start_row=ref_start_row, start_column=5, end_row=ref_start_row, end_column=remark_end_col)
+        ws.cell(row=ref_start_row, column=5, value=str(d_row["Remark"])).alignment = Alignment(horizontal="left")
+        ws.cell(row=ref_start_row, column=5).font = data_font
+        ws.cell(row=ref_start_row, column=5).border = thin_border
 
         ws.row_dimensions[ref_start_row].height = 18
         ref_start_row += 1
@@ -512,8 +543,6 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame)
         ws.column_dimensions[col_letter].width = max(max_len + 3, 11)
 
     ws.column_dimensions["A"].width = 22
-    ws.column_dimensions["B"].width = 38
-    ws.column_dimensions["C"].width = 50
 
     output = io.BytesIO()
     wb.save(output)

@@ -109,12 +109,12 @@ def test_build_pos_success_rate_excel():
     wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
     ws = wb.active
 
-    assert "Pos Transaction Decline Response & Success Rate Summary" in ws["A1"].value
-    assert ws["A3"].value == "RC/BANK NAME"
+    assert "Pos Transaction Decline Response Summary" in ws["A2"].value
+    assert ws["A5"].value == "RC/BANK NAME"
 
     # Find row indices by row label in column A
     row_map = {}
-    for r in range(3, ws.max_row + 1):
+    for r in range(5, ws.max_row + 1):
         val = ws.cell(row=r, column=1).value
         if val:
             row_map[str(val).strip()] = r
@@ -134,14 +134,18 @@ def test_build_pos_success_rate_excel():
     assert str(ws.cell(row=tot_dec_row, column=2).value).startswith("=SUM(")
     assert str(ws.cell(row=tot_succ_row, column=2).value).startswith("=")
     assert str(ws.cell(row=tot_pos_row, column=2).value).startswith("=")
-    assert str(ws.cell(row=succ_rate_row, column=2).value).startswith("=IF(")
+    # Success rate formula is =B{tot_succ}/B{tot_pos}
+    rate_formula = str(ws.cell(row=succ_rate_row, column=2).value)
+    assert rate_formula.startswith("=B")
+    assert "/" in rate_formula
 
     # Check Total Column (Col C / Col 3) formulas
     assert str(ws.cell(row=tot_dec_row, column=3).value).startswith("=SUM(")
-    assert str(ws.cell(row=succ_rate_row, column=3).value).startswith("=IF(")
+    tot_rate_formula = str(ws.cell(row=succ_rate_row, column=3).value)
+    assert tot_rate_formula.startswith("=C")
 
     # Check success rate row formatting & fill color (Awash rate = 2/2 = 100% -> Green fill 00B050)
     rate_cell = ws.cell(row=succ_rate_row, column=2)
-    assert rate_cell.number_format == "0.00%"
+    assert rate_cell.number_format == "0%"
     assert rate_cell.fill.start_color.rgb in ("0000B050", "00B050")
 

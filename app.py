@@ -17,7 +17,7 @@ from collections import Counter
 from merger import MODES, MergeResult, merge_reports, build_filtered_workbook, build_workbook
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # 64 MB request cap
+app.config["MAX_CONTENT_LENGTH"] = 400 * 1024 * 1024  # 400 MB request cap
 
 # In-memory cache of generated workbooks:
 # token -> (created_at, filename, bytes, records, columns, mode_key,
@@ -25,7 +25,7 @@ app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # 64 MB request cap
 _CACHE: dict[str, tuple[float, str, bytes, list, list, str, list]] = {}
 _CACHE_TTL_SECONDS = 30 * 60
 _MAX_FILES = 50
-_MAX_BYTES_PER_FILE = 50 * 1024 * 1024
+_MAX_BYTES_PER_FILE = 400 * 1024 * 1024
 
 
 def _sweep_cache() -> None:
@@ -63,7 +63,7 @@ def merge():
         data = f.read()
         if len(data) > _MAX_BYTES_PER_FILE:
             return jsonify(
-                {"error": f"'{f.filename}' exceeds the 50 MB per-file size limit."}
+                {"error": f"'{f.filename}' exceeds the 400 MB per-file size limit."}
             ), 400
         payloads.append((f.filename, data))
 

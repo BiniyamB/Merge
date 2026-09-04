@@ -758,7 +758,7 @@ if meta["mode_key"] in ("pos", "pos_decline", "pos_success"):
     with col_sr_dl1:
         if st.button("Download POS Success Rate Report", use_container_width=True, key="dl_sr_btn"):
             with st.spinner("Building POS Success Rate workbook..."):
-                sr_excel_bytes = build_pos_success_rate_excel(matrix_df, desc_df)
+                sr_excel_bytes = build_pos_success_rate_excel(matrix_df, desc_df, report_date=meta['from_date'])
             sr_filename = f"POS_Success_Rate_Report_Issuer_{meta['from_date']}_to_{meta['to_date']}.xlsx"
             st.download_button(
                 label="Click to save POS Success Rate Report",

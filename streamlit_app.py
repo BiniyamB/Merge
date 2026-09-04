@@ -19,6 +19,7 @@ from merger import MODES, merge_reports, build_filtered_workbook, build_workbook
 
 from snapshot_module import REPORT_DEFAULTS, SERVICE_DEFAULTS, calc_all, build_report_html, fmt_int
 from acquirer_analysis import analyze_atm, analyze_pos, analyze_ips
+from nbe_report import generate_nbe_report, build_nbe_report_excel
 
 # ── Global CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
@@ -664,6 +665,45 @@ with col_dl2:
         st.button("No Duplicates to Download", use_container_width=True, disabled=True, key="dl_dupes_disabled")
 
 st.markdown('</div>', unsafe_allow_html=True)
+
+# ── NBE Institution Summary Report (POS & ATM only) ──────────────────────────
+if meta["mode_key"] in ("pos", "atm"):
+    st.markdown('<div class="section-sep"><span>NBE Institution Report</span></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-purple">&#127974;</div>'
+        '<div><p class="card-title">NBE Institution Breakdown Report</p>'
+        '<p class="card-sub">Transaction counts and total value (ETB) per institution as Issuer &amp; Acquirer '
+        f'(Filtered for successful {meta["mode_key"].upper()} transactions with Response Code -1 / -1.0)</p></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    nbe_df = generate_nbe_report(st.session_state.records, meta["mode_key"])
+
+    st.dataframe(
+        nbe_df,
+        use_container_width=True,
+        hide_index=True,
+        height=360,
+    )
+
+    col_nbe_dl1, col_nbe_dl2 = st.columns(2)
+    with col_nbe_dl1:
+        if st.button(f"Download {meta['mode_key'].upper()} NBE Institution Report", use_container_width=True, key="dl_nbe_btn"):
+            with st.spinner("Building NBE Report workbook..."):
+                nbe_excel_bytes = build_nbe_report_excel(nbe_df, meta["mode_key"])
+            nbe_filename = f"NBE_{meta['mode_key'].upper()}_Report_{meta['from_date']}_to_{meta['to_date']}.xlsx"
+            st.download_button(
+                label="Click to save NBE Report",
+                data=nbe_excel_bytes,
+                file_name=nbe_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dl_nbe_actual",
+            )
+            del nbe_excel_bytes
+            gc.collect()
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Filter Panel ─────────────────────────────────────────────────────────────
 st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-pink">&#9660;</div><div><p class="card-title">Filter & Export to Sheets</p><p class="card-sub">Build filters column by column, then create sheets. Each sheet becomes a separate tab in the downloaded Excel file.</p></div></div>', unsafe_allow_html=True)

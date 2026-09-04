@@ -96,7 +96,7 @@ def test_generate_pos_success_rate_report():
 
 
 def test_build_pos_success_rate_excel():
-    """Verify POS Success Rate Excel output."""
+    """Verify POS Success Rate Excel output including formulas and tier color styling."""
     records = [
         {"ISSUER": "Awash Bank", "RESP": "-1"},
         {"ISSUER": "Awash Bank", "RESP": "901"},
@@ -111,3 +111,37 @@ def test_build_pos_success_rate_excel():
 
     assert "Pos Transaction Decline Response & Success Rate Summary" in ws["A1"].value
     assert ws["A3"].value == "RC/BANK NAME"
+
+    # Find row indices by row label in column A
+    row_map = {}
+    for r in range(3, ws.max_row + 1):
+        val = ws.cell(row=r, column=1).value
+        if val:
+            row_map[str(val).strip()] = r
+
+    assert "Total Decline" in row_map
+    assert "card holder rel dec" in row_map
+    assert "total succ" in row_map
+    assert "total pos t" in row_map
+    assert "success rate" in row_map
+
+    # Check AWASH column (Col B / Col 2) formulas
+    tot_dec_row = row_map["Total Decline"]
+    tot_succ_row = row_map["total succ"]
+    tot_pos_row = row_map["total pos t"]
+    succ_rate_row = row_map["success rate"]
+
+    assert str(ws.cell(row=tot_dec_row, column=2).value).startswith("=SUM(")
+    assert str(ws.cell(row=tot_succ_row, column=2).value).startswith("=")
+    assert str(ws.cell(row=tot_pos_row, column=2).value).startswith("=")
+    assert str(ws.cell(row=succ_rate_row, column=2).value).startswith("=IF(")
+
+    # Check Total Column (Col C / Col 3) formulas
+    assert str(ws.cell(row=tot_dec_row, column=3).value).startswith("=SUM(")
+    assert str(ws.cell(row=succ_rate_row, column=3).value).startswith("=IF(")
+
+    # Check success rate row formatting & fill color (Awash rate = 2/2 = 100% -> Green fill C6EFCE)
+    rate_cell = ws.cell(row=succ_rate_row, column=2)
+    assert rate_cell.number_format == "0.00%"
+    assert rate_cell.fill.start_color.rgb == "00C6EFCE" or rate_cell.fill.start_color.rgb == "C6EFCE"
+

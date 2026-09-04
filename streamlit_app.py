@@ -719,11 +719,36 @@ if meta["mode_key"] in ("pos", "pos_decline", "pos_success"):
 
     matrix_df, desc_df = generate_pos_success_rate_report(st.session_state.records)
 
+    # Format success rate row values as percentages for UI preview
+    display_matrix = matrix_df.copy()
+    rate_idx = display_matrix[display_matrix["RC/BANK NAME"] == "success rate"].index
+    if not rate_idx.empty:
+        r_i = rate_idx[0]
+        for col_name in display_matrix.columns:
+            if col_name != "RC/BANK NAME":
+                val = display_matrix.at[r_i, col_name]
+                try:
+                    fval = float(val)
+                    display_matrix.at[r_i, col_name] = f"{fval * 100:.2f}%"
+                except (ValueError, TypeError):
+                    pass
+
     st.dataframe(
-        matrix_df,
+        display_matrix,
         use_container_width=True,
         hide_index=True,
         height=380,
+    )
+
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#a0aec0;margin-bottom:12px;">'
+        '<b>Success Rate Color Fills:</b> '
+        '<span style="background:#C6EFCE;color:#006100;padding:2px 8px;border-radius:4px;font-weight:700;">🟩 97%–100% Green</span> &nbsp;'
+        '<span style="background:#FFEB9C;color:#9C6500;padding:2px 8px;border-radius:4px;font-weight:700;">🟨 86%–96% Yellow</span> &nbsp;'
+        '<span style="background:#FFF2CC;color:#7F6000;padding:2px 8px;border-radius:4px;font-weight:700;">🟧 79%–85% L. Yellow</span> &nbsp;'
+        '<span style="background:#FFC7CE;color:#9C0006;padding:2px 8px;border-radius:4px;font-weight:700;">🟥 &le;78% Red</span>'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
     with st.expander("Response Code Descriptions & Remarks Lookup Table", expanded=False):

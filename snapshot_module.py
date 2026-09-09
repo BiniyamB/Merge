@@ -592,7 +592,7 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True,
              '<th class="th-avg"><span class="th-inner th-num"><span class="th-icon th-icon-green">'
              '<i data-lucide="trending-up"></i></span>AVG TRANSACTION VALUE (ETB)</span></th>'
              '<th class="th-message"><span class="th-inner"><span class="th-icon th-icon-purple">'
-             '<i data-lucide="message-square"></i></span>KEY MESSAGE</span></th>'
+             '<i data-lucide="message-square"></i></span>JUSTIFICATION</span></th>'
              "</tr></thead><tbody>" + "".join(rows) + total_row + "</tbody></table></div>")
 
     leader = calc["volumeLeader"]

@@ -51,10 +51,16 @@
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">Subtitle</label>
-                <input type="text" id="report-subtitle" value="<%= data.report.subtitle %>"
+                <label class="block text-xs font-medium text-gray-600 mb-1">Report Date From</label>
+                <input type="text" id="report-date-from" value="<%= data.report.dateFrom || '' %>"
                   class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
               </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Report Date To</label>
+                <input type="text" id="report-date-to" value="<%= data.report.dateTo || '' %>"
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition">
+              </div>
+            </div>
               <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">Report Date</label>
                 <input type="text" id="report-date" value="<%= data.report.date %>"

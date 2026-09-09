@@ -66,7 +66,8 @@
       tagline1: gv('report-tagline1'),
       tagline2: gv('report-tagline2'),
       subtitle: gv('report-subtitle'),
-      date: gv('report-date')
+      dateFrom: gv('report-date-from'),
+      dateTo: gv('report-date-to')
     };
   }
 
@@ -261,9 +262,11 @@
     // Dynamic key takeaway
     var takeaway = generateTakeaway(enriched, qr, volumeLeader, highestAvg);
 
-    // Total row (excludes success-rate rows - they are percentages)
+    // Total row (excludes success-rate rows - they are percentages;
+    // also excludes RTP and NPG - they have no plan / are out of scope this time)
     var total = enriched.reduce(function (acc, s) {
       if (s.isSuccessRate) return acc;
+      if (/RTP|NPG/i.test(s.name || '')) return acc;
       acc.performance += s.transactionVolume || 0;
       acc.target += s.target || 0;
       acc.totalValue += s.totalValue || 0;
@@ -346,7 +349,10 @@
     setText('r-brand', r.brand);
     setText('r-title', r.title);
     setText('r-subtitle', r.subtitle);
-    setText('r-date', r.date);
+    var dateText = (r.dateFrom && r.dateTo && r.dateFrom !== r.dateTo)
+      ? r.dateFrom + ' → ' + r.dateTo
+      : (r.dateFrom || r.dateTo || '');
+    setText('r-date', dateText);
     setText('f-org', r.organization + ' S.C.');
     setText('f-tagline', r.tagline1);
   }
@@ -583,7 +589,13 @@
     setVal('report-tagline1', data.report.tagline1);
     setVal('report-tagline2', data.report.tagline2);
     setVal('report-subtitle', data.report.subtitle);
-    setVal('report-date', data.report.date);
+    if (data.report.dateFrom !== undefined) {
+      setVal('report-date-from', data.report.dateFrom);
+      setVal('report-date-to', data.report.dateTo);
+    } else {
+      setVal('report-date-from', data.report.date);
+      setVal('report-date-to', data.report.date);
+    }
 
     // Settings
     var s = data.settings || {};

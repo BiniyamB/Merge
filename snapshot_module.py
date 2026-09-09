@@ -17,7 +17,8 @@ REPORT_DEFAULTS = {
     "tagline1": "Making Payment Simple and Affordable",
     "tagline2": "One Payment. Every Possibility.",
     "subtitle": "Performance Overview by Service",
-    "date": "31.08.26",
+    "dateFrom": "01.08.26",
+    "dateTo": "31.08.26",
 }
 
 SERVICE_DEFAULTS = [
@@ -39,9 +40,9 @@ SERVICE_DEFAULTS = [
     {"name": "QR", "type": "financial", "transactionVolume": 30248,
      "totalValue": 268061663.69, "target": 35000, "keyMessage": "", "highlighted": True},
     {"name": "RTP", "type": "financial", "transactionVolume": 5400,
-     "totalValue": 1850000000.00, "target": 6000, "keyMessage": "", "highlighted": False},
+     "totalValue": 1850000000.00, "target": 0, "keyMessage": "", "highlighted": False},
     {"name": "NPG (CARD AND ONLINE)", "type": "financial", "transactionVolume": 21203,
-     "totalValue": 6925000000.00, "target": 25000, "keyMessage": "", "highlighted": False},
+     "totalValue": 6925000000.00, "target": 0, "keyMessage": "", "highlighted": False},
 ]
 
 _IMG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "snapshot")
@@ -369,6 +370,17 @@ def _is_success_rate(s):
     return s.get("type") == "success-rate" or "SUCCESS RATE" in (s.get("name") or "").upper()
 
 
+def _is_excluded_from_total(s):
+    """RTP and NPG are excluded from the TOTAL row (they have no plan this time)."""
+    n = (s.get("name") or "").upper()
+    return "RTP" in n or "NPG" in n
+
+
+def _countable(s):
+    """Rows included in the TOTAL calculation."""
+    return not _is_success_rate(s) and not _is_excluded_from_total(s)
+
+
 def calc_all(services):
     """Mirror of app.js calcAll()."""
     enriched = []
@@ -397,7 +409,7 @@ def calc_all(services):
             "averageTransactionValue": avg,
         })
 
-    countables = [x for x in enriched if not x["isSuccessRate"]]
+    countables = [x for x in enriched if _countable(x)]
     max_vol = max((x["transactionVolume"] for x in countables), default=0)
     feas = [x for x in enriched if x["isFinancial"]]
     max_avg = max((x["averageTransactionValue"] for x in feas), default=0)
@@ -614,6 +626,11 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True,
 
     org_logo = _img_data_uri("ethswitch.jpg")
     bird_logo = _img_data_uri("ethiopay-bird.jpg")
+    if report.get("dateFrom") and report.get("dateTo") and report.get("dateFrom") != report.get("dateTo"):
+        date_html = ('<span class="date-value">' + _esc(report.get("dateFrom")) + " &rarr; "
+                     + _esc(report.get("dateTo")) + "</span>")
+    else:
+        date_html = ('<span class="date-value">' + _esc(report.get("date") or report.get("dateFrom") or report.get("dateTo")) + "</span>")
     header = ('<div class="report-header">'
               '<div class="header-left"><div class="org-badge">'
               '<img class="org-logo" src="' + org_logo + '" alt="' + _esc(report.get("organization")) + '">'
@@ -629,7 +646,8 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True,
               '<img class="bird-logo" src="' + bird_logo + '" alt="EthioPay"></div>'
               '<div class="header-sep"></div>'
               '<div class="date-badge"><span class="date-label">DATE</span>'
-              '<span class="date-value">' + _esc(report.get("date")) + "</span></div>"
+              + date_html +
+              "</div>"
               + _phone_mockup() +
               "</div></div></div>")
 
@@ -730,7 +748,7 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True,
             "<div class='toolbar'>"
             "<button onclick='window.print()'>Print / Save as PDF</button>"
             "<button onclick='capturePNG()'>Download PNG</button></div>"
-            "<div id='report-content'>" + header + table + insights + acquirer_html + footer + "</div>"
+            "<div id='report-content'>" + header + table + acquirer_html + insights + footer + "</div>"
             "<script>lucide.createIcons();"
             "function capturePNG(){var t=document.querySelector('.toolbar');var e=document.getElementById('report-content');"
             "t.style.visibility='hidden';"

@@ -255,13 +255,15 @@ def _render_snapshot_page():
             r_tagline1 = st.text_input("Tagline", value=REPORT_DEFAULTS["tagline1"], key="snap_rep_tag1")
         with c2:
             r_brand = st.text_input("Brand", value=REPORT_DEFAULTS["brand"], key="snap_rep_brand")
-            r_date = st.text_input("Date", value=REPORT_DEFAULTS["date"], key="snap_rep_date")
             r_tagline2 = st.text_input("Tagline 2 (footer)", value=REPORT_DEFAULTS["tagline2"], key="snap_rep_tag2")
+            c2a, c2b = st.columns(2)
+            r_date_from = c2a.text_input("Date From", value=REPORT_DEFAULTS["dateFrom"], key="snap_rep_date_from")
+            r_date_to = c2b.text_input("Date To", value=REPORT_DEFAULTS["dateTo"], key="snap_rep_date_to")
 
     report = {
         "title": r_title, "organization": r_org, "brand": r_brand,
         "tagline1": r_tagline1, "tagline2": r_tagline2,
-        "subtitle": r_subtitle, "date": r_date,
+        "subtitle": r_subtitle, "dateFrom": r_date_from, "dateTo": r_date_to,
     }
 
     st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-green">&#128202;</div>'

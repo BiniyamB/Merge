@@ -5,7 +5,8 @@ const defaultReport = {
   tagline1: 'Making Payment Simple and Affordable',
   tagline2: 'One Payment. Every Possibility.',
   subtitle: 'Performance Overview by Service',
-  date: '31.08.26'
+  dateFrom: '01.08.26',
+  dateTo: '31.08.26'
 };
 
 const defaultServices = [
@@ -112,7 +113,7 @@ const defaultServices = [
     type: 'financial',
     transactionVolume: 5400,
     totalValue: 1850000000.00,
-    target: 6000,
+    target: 0,
     keyMessage: '',
     highlighted: false,
     highlightStyle: ''
@@ -124,7 +125,7 @@ const defaultServices = [
     type: 'financial',
     transactionVolume: 21203,
     totalValue: 6925000000.00,
-    target: 25000,
+    target: 0,
     keyMessage: '',
     highlighted: false,
     highlightStyle: ''

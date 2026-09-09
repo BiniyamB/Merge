@@ -27,7 +27,11 @@
 
       <div class="date-badge">
         <span class="date-label">DATE</span>
-        <span class="date-value" id="r-date"><%= data.report.date %></span>
+        <span class="date-value" id="r-date"><%=
+          (data.report.dateFrom && data.report.dateTo && data.report.dateFrom !== data.report.dateTo)
+            ? data.report.dateFrom + ' → ' + data.report.dateTo
+            : (data.report.dateFrom || data.report.dateTo || '')
+        %></span>
       </div>
 
       <div class="phone" title="QR">

@@ -683,60 +683,29 @@ def _sett_sheet_to_grid(ws: Any) -> tuple[list[str], list[list[Any]]]:
     return col_map, data_rows
 
 
-def generate_sett_sum_report(file_bytes: bytes) -> pd.DataFrame:
-    """Generate a Sett(Sum) DataFrame from a bini-style settlement workbook.
+def _sett_build_df(col_map: list[str], data_rows: list[list[Any]]) -> pd.DataFrame:
+    """Aggregate one settlement sheet grid into a Sett(Sum) DataFrame.
 
-    The workbook holds two sheets (ISS_BANKS and ACQ_BANKS). The first
-    column of each sheet is the bank name; the remaining columns are
-    per-bank metrics (CASH_WITHDRAWAL, AMOUNT_CW, BALANCE_INQUIRY,
-    PURCHASE, AMOUNT_POS, STATEMENT). Rows carrying the same bank name
-    (after NBE normalisation) are merged into a single row and every
-    matching numeric column is summed across both sheets, so the output
-    has exactly one row per institution plus a Total row.
+    Rows carrying the same bank name (after NBE normalisation) are merged
+    into a single row and every matching numeric column is summed, so the
+    output has exactly one row per institution plus a Total row.
     """
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
-    except Exception as exc:  # noqa: BLE001 - surface a friendly message
-        raise ValueError(f"Could not read the settlement workbook ({exc}).") from exc
-
-    # Read every sheet into memory before closing the workbook (read-only
-    # worksheets cannot be iterated after the archive is closed).
-    try:
-        grids = [_sett_sheet_to_grid(ws) for ws in wb.worksheets]
-    finally:
-        wb.close()
-
-    sheets = [(cm, dr) for cm, dr in grids if cm and dr]
-
-    if not sheets:
-        raise ValueError("The settlement workbook contains no readable sheets.")
+    bank_col = col_map.index("BANKS")
+    metric_cols = [c for c, name in enumerate(col_map) if name not in ("", "BANKS")]
 
     stats: dict[str, dict[str, float]] = {}
-
-    for col_map, data_rows in sheets:
-        if not col_map or not data_rows:
+    for row in data_rows:
+        bank = normalize_nbe_bank(row[bank_col] if bank_col < len(row) else None)
+        if not bank:
             continue
-        bank_col = col_map.index("BANKS")
-        metric_cols = [c for c, name in enumerate(col_map) if name not in ("", "BANKS")]
-        if not metric_cols:
-            continue
-
-        for row in data_rows:
-            bank = normalize_nbe_bank(row[bank_col] if bank_col < len(row) else None)
-            if not bank:
+        st = stats.setdefault(bank, {m: 0.0 for m in _SETT_METRIC_COLUMNS})
+        for c in metric_cols:
+            if c >= len(row):
                 continue
-            st = stats.setdefault(bank, {m: 0.0 for m in _SETT_METRIC_COLUMNS})
-            for c in metric_cols:
-                if c >= len(row):
-                    continue
-                canon = col_map[c]
-                st[canon] = st.get(canon, 0.0) + _sett_num(row[c])
+            st[col_map[c]] += _sett_num(row[c])
 
     if not stats:
-        raise ValueError(
-            "No bank rows found in the settlement workbook (expected two sheets "
-            "whose first column is ISS_BANKS / ACQ_BANKS)."
-        )
+        return pd.DataFrame()
 
     bank_list = [b for b in STANDARD_NBE_BANKS if b in stats]
     extra_banks = sorted([b for b in stats.keys() if b not in set(STANDARD_NBE_BANKS)])
@@ -763,94 +732,148 @@ def generate_sett_sum_report(file_bytes: bytes) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def build_sett_sum_report_excel(df: pd.DataFrame) -> bytes:
-    """Build a formatted Excel workbook for the Sett(Sum) report."""
+def _sett_sheet_label(ws: Any, position: int) -> str:
+    """Label a settlement sheet as ISS_Banks / Acquirer_Banks.
+
+    Sniffs the bank-name header cell; falls back to position (first sheet =
+    issuer, second = acquirer) when the header is not explicit.
+    """
+    for row in ws.iter_rows(min_row=1, max_row=5, values_only=True):
+        for cell in row:
+            if isinstance(cell, str):
+                upper = cell.strip().upper()
+                if "ACQ_BANKS" in upper or "ACQUIRER" in upper:
+                    return "Acquirer_Banks"
+                if "ISS_BANKS" in upper or "ISSUER" in upper:
+                    return "ISS_Banks"
+    return "ISS_Banks" if position == 0 else ("Acquirer_Banks" if position == 1 else f"Sheet {position + 1}")
+
+
+def generate_sett_sum_report(file_bytes: bytes) -> dict[str, pd.DataFrame]:
+    """Generate Sett(Sum) DataFrames from a bini-style settlement workbook.
+
+    The workbook holds two sheets (the first is the ISS_BANKS side, the
+    second the ACQ_BANKS side). Each sheet is aggregated independently and
+    returned under its own key so the caller can lay them out side by side:
+    {"ISS_Banks": <df>, "Acquirer_Banks": <df>}.
+    """
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    except Exception as exc:  # noqa: BLE001 - surface a friendly message
+        raise ValueError(f"Could not read the settlement workbook ({exc}).") from exc
+
+    # Read every sheet into memory before closing the workbook (read-only
+    # worksheets cannot be iterated after the archive is closed).
+    try:
+        grids = []
+        for position, ws in enumerate(wb.worksheets):
+            col_map, data_rows = _sett_sheet_to_grid(ws)
+            grids.append((_sett_sheet_label(ws, position), col_map, data_rows))
+    finally:
+        wb.close()
+
+    reports: dict[str, pd.DataFrame] = {}
+    for position, (label, col_map, data_rows) in enumerate(grids):
+        df = _sett_build_df(col_map, data_rows)
+        if df.empty:
+            continue
+        # The bini file spells both side headers "ISS_BANKS"; if a sniffed
+        # label was already claimed by an earlier sheet, fall back to the
+        # sheet position so ISS and Acquirer never collide.
+        if label in reports:
+            label = (
+                "ISS_Banks"
+                if position == 0
+                else ("Acquirer_Banks" if position == 1 else f"Sheet {position + 1}")
+            )
+        reports[label] = df
+
+    if not reports:
+        raise ValueError(
+            "No bank rows found in the settlement workbook (expected two sheets "
+            "whose first column is ISS_BANKS / ACQ_BANKS)."
+        )
+
+    return reports
+
+
+def build_sett_sum_report_excel(reports: dict[str, pd.DataFrame]) -> bytes:
+    """Build a formatted Sett(Sum) workbook with one sheet per side.
+
+    ``reports`` maps a sheet label ("ISS_Banks" / "Acquirer_Banks") to its
+    aggregated DataFrame. Every sheet uses the same design as the POS (Daily)
+    and POS Decline reports: a title block with a "Report name:" label, a
+    header row on a light-blue fill with thin borders, right-aligned numeric
+    columns, a highlighted Total row and hidden grid lines.
+    """
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sett(Sum)"
+    wb.remove(wb.active)  # drop the auto-created sheet; we add named ones below
 
     font_family = "Arial"
+    label_font = Font(name=font_family, size=11, bold=True)
+    title_font = Font(name=font_family, size=14, bold=True)
+    header_font = Font(name=font_family, size=11, bold=True, color="1F2937")
+    header_fill = PatternFill("solid", fgColor="D9E1F2")
+    data_font = Font(name=font_family, size=11)
+    total_font = Font(name=font_family, size=11, bold=True, color="FFFFFF")
+    total_fill = PatternFill("solid", fgColor="1F4E78")
 
-    header_title_font = Font(name=font_family, size=14, bold=True, color="FFFFFF")
-    header_title_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    thin = Side(style="thin", color="BFBFBF")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    col_hdr_font = Font(name=font_family, size=10, bold=True, color="1F4E78")
-    col_hdr_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    for label, df in reports.items():
+        ws = wb.create_sheet(title=label)
+        n_cols = len(df.columns)
+        last_col = get_column_letter(n_cols)
 
-    data_font = Font(name=font_family, size=10)
-    total_font = Font(name=font_family, size=11, bold=True)
-    total_fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+        # Row 1: Title block (matching the POS / decline report layout)
+        a1 = ws.cell(row=1, column=1, value="Report name:")
+        a1.font = label_font
+        ws.merge_cells(f"B1:{last_col}1")
+        b1 = ws.cell(row=1, column=2, value=f"SETT(SUM) - SETTLEMENT SUMMARY ({label.upper()})")
+        b1.font = title_font
+        b1.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[1].height = 24
 
-    thin_border = Border(
-        left=Side(style="thin", color="D9D9D9"),
-        right=Side(style="thin", color="D9D9D9"),
-        top=Side(style="thin", color="D9D9D9"),
-        bottom=Side(style="thin", color="D9D9D9"),
-    )
-
-    thick_top_double_bottom = Border(
-        top=Side(style="thin", color="000000"),
-        bottom=Side(style="double", color="000000"),
-    )
-
-    n_cols = len(df.columns)
-
-    # Row 1: Report Title
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols)
-    title_cell = ws.cell(row=1, column=1)
-    title_cell.value = "SETT(SUM) - SETTLEMENT SUMMARY"
-    title_cell.font = header_title_font
-    title_cell.fill = header_title_fill
-    title_cell.alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[1].height = 32
-
-    # Row 2: Column Headers
-    for col_idx, col_name in enumerate(df.columns, start=1):
-        cell = ws.cell(row=2, column=col_idx, value=col_name)
-        cell.font = col_hdr_font
-        cell.fill = col_hdr_fill
-        cell.alignment = Alignment(
-            horizontal="center" if col_idx == 1 else ("left" if col_idx == 2 else "right"),
-            vertical="center",
-        )
-    ws.row_dimensions[2].height = 20
-
-    # Data Rows
-    current_row = 3
-    for idx, row in df.iterrows():
-        is_total = (idx == len(df) - 1)
-        row_num = current_row
+        # Row 2: Column Headers
+        header_row = 2
         for col_idx, col_name in enumerate(df.columns, start=1):
-            cell = ws.cell(row=row_num, column=col_idx, value=row.iloc[col_idx - 1])
-            if col_name in _SETT_METRIC_COLUMNS:
-                cell.number_format = "#,##0" if col_name in _SETT_COUNT_COLUMNS else "#,##0.00"
-            if is_total:
-                cell.font = total_font
-                cell.fill = total_fill
-                cell.border = thick_top_double_bottom
-            else:
-                cell.font = data_font
-                cell.border = thin_border
-            if col_idx == 1:
-                cell.alignment = Alignment(horizontal="center")
-            elif col_idx == 2:
-                cell.alignment = Alignment(horizontal="left")
-            else:
-                cell.alignment = Alignment(horizontal="right")
-        ws.row_dimensions[row_num].height = 20
-        current_row += 1
+            cell = ws.cell(row=header_row, column=col_idx, value=col_name)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = border
+        ws.row_dimensions[header_row].height = 20
 
-    # Auto-adjust column widths
-    for col in ws.columns:
-        max_len = max(len(str(cell.value or "")) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+        # Data Rows
+        for idx, row in df.iterrows():
+            is_total = (idx == len(df) - 1)
+            row_num = ws.max_row + 1
+            for col_idx, col_name in enumerate(df.columns, start=1):
+                cell = ws.cell(row=row_num, column=col_idx, value=row.iloc[col_idx - 1])
+                cell.border = border
+                if col_name in _SETT_METRIC_COLUMNS:
+                    cell.number_format = "#,##0" if col_name in _SETT_COUNT_COLUMNS else "#,##0.00"
+                if is_total:
+                    cell.font = total_font
+                    cell.fill = total_fill
+                else:
+                    cell.font = data_font
+                if col_idx == 1:
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                elif col_idx == 2:
+                    cell.alignment = Alignment(horizontal="left", vertical="center")
+                else:
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
 
-    ws.column_dimensions["B"].width = 24
-    for m in ("AMOUNT_CW", "AMOUNT_POS"):
-        if m in df.columns:
-            col_idx = list(df.columns).index(m) + 1
-            ws.column_dimensions[get_column_letter(col_idx)].width = 20
+        # Layout
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or "")) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = min(max(max_len + 4, 12), 32)
+        ws.column_dimensions["B"].width = 24
+        ws.freeze_panes = "A3"
+        ws.sheet_view.showGridLines = False
 
     output = io.BytesIO()
     wb.save(output)

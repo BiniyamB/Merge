@@ -444,19 +444,22 @@ st.markdown(
 
 sett_file = st.file_uploader("Settlement workbook (bini style)", type=["xls", "xlsx"], key="sett_file")
 
-sett_df = None
+sett_reports = None
 if sett_file is not None:
     with st.spinner("Building Sett(Sum) report..."):
         try:
-            sett_df = generate_sett_sum_report(sett_file.getvalue())
+            sett_reports = generate_sett_sum_report(sett_file.getvalue())
         except ValueError as e:
             st.error(str(e))
 
-if sett_df is not None:
-    st.dataframe(sett_df, use_container_width=True, hide_index=True, height=380)
+if sett_reports:
+    tabs = st.tabs(list(sett_reports.keys()))
+    for tab, (label, sett_df) in zip(tabs, sett_reports.items()):
+        with tab:
+            st.dataframe(sett_df, use_container_width=True, hide_index=True, height=360)
     if st.button("Download Sett(Sum) Report", use_container_width=True, key="dl_sett_btn"):
         with st.spinner("Building Sett(Sum) workbook..."):
-            sett_excel_bytes = build_sett_sum_report_excel(sett_df)
+            sett_excel_bytes = build_sett_sum_report_excel(sett_reports)
         sett_filename = "Sett_Sum_Report.xlsx"
         st.download_button(
             label="Click to save Sett(Sum) Report",

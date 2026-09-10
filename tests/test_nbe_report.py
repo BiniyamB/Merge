@@ -172,8 +172,30 @@ def test_build_nbe_report_excel_balance_inquiry_4col():
     assert ws["F3"].value is None
 
 
+def test_generate_sett_sum_report_label_collision():
+    """Both sheets may spell the bank header 'ISS_BANKS'; sides must not collide."""
+    wb = openpyxl.Workbook()
+    ws1 = wb.active
+    ws1.title = "s1"
+    ws1.append(["ISS_BANKS", "CASH_WITHDRAWAL", "AMOUNT_CW"])
+    ws1.append(["Abay Bank", 10, 100])
+    ws2 = wb.create_sheet("s2")
+    ws2.append(["ISS_BANKS", "CASH_WITHDRAWAL", "AMOUNT_CW"])
+    ws2.append(["Abay Bank", 20, 200])
+    buf = io.BytesIO()
+    wb.save(buf)
+    wb.close()
+
+    reports = generate_sett_sum_report(buf.getvalue())
+    assert set(reports.keys()) == {"ISS_Banks", "Acquirer_Banks"}
+    iss = reports["ISS_Banks"]
+    acq = reports["Acquirer_Banks"]
+    assert iss[iss["BANKS"] == "Abay Bank"].iloc[0]["CASH_WITHDRAWAL"] == 10
+    assert acq[acq["BANKS"] == "Abay Bank"].iloc[0]["CASH_WITHDRAWAL"] == 20
+
+
 def test_generate_sett_sum_report_and_excel():
-    """Verify Sett(Sum) merges same bank name across both sheets and sums columns."""
+    """Verify Sett(Sum) keeps ISS and ACQ sides in separate sheets and sums columns."""
     wb = openpyxl.Workbook()
 
     ws1 = wb.active
@@ -193,37 +215,57 @@ def test_generate_sett_sum_report_and_excel():
     wb.save(buf)
     wb.close()
 
-    df = generate_sett_sum_report(buf.getvalue())
-    assert not df.empty
+    reports = generate_sett_sum_report(buf.getvalue())
+    assert set(reports.keys()) == {"ISS_Banks", "Acquirer_Banks"}
+
+    iss = reports["ISS_Banks"]
+    assert not iss.empty
 
     # names normalized to STANDARD_NBE_BANKS
-    banks = set(df["BANKS"].tolist())
+    banks = set(iss["BANKS"].tolist())
     assert "Abay Bank" in banks
     assert "CBE" in banks
     assert "BOA" in banks
 
-    # Abay: 11+37=48 CW, 6000+402790=408790 AMOUNT_CW, 2+50=52 BI, 0+4=4 PURCHASE
-    abay = df[df["BANKS"] == "Abay Bank"].iloc[0]
-    assert abay["CASH_WITHDRAWAL"] == 48
-    assert abay["AMOUNT_CW"] == 408790
-    assert abay["BALANCE_INQUIRY"] == 52
-    assert abay["PURCHASE"] == 4
+    # Abay (issuer side): 11 CW, 6000 AMOUNT_CW, 2 BI, 0 PURCHASE
+    abay = iss[iss["BANKS"] == "Abay Bank"].iloc[0]
+    assert abay["CASH_WITHDRAWAL"] == 11
+    assert abay["AMOUNT_CW"] == 6000
+    assert abay["BALANCE_INQUIRY"] == 2
+    assert abay["PURCHASE"] == 0
 
-    # CBE alias ("Commercial Bank" -> CBE) merged: 5+1=6 CW
-    cbe = df[df["BANKS"] == "CBE"].iloc[0]
-    assert cbe["CASH_WITHDRAWAL"] == 6
-    assert cbe["STATEMENT"] == 1
+    # CBE alias ("Commercial Bank" -> CBE): 5 CW on issuer side only
+    cbe = iss[iss["BANKS"] == "CBE"].iloc[0]
+    assert cbe["CASH_WITHDRAWAL"] == 5
+    assert cbe["STATEMENT"] == 0
 
-    # Total equals grand sum of every numeric column
-    tot = df[df["BANKS"] == "Total"].iloc[0]
+    # ISS Total equals grand sum of every numeric column
+    tot = iss[iss["BANKS"] == "Total"].iloc[0]
     numeric_cols = ["CASH_WITHDRAWAL", "AMOUNT_CW", "BALANCE_INQUIRY", "PURCHASE", "AMOUNT_POS", "STATEMENT"]
-    data = df[df["BANKS"] != "Total"]
+    data = iss[iss["BANKS"] != "Total"]
     for col in numeric_cols:
         assert tot[col] == sum(data[col].fillna(0))
 
-    excel_bytes = build_sett_sum_report_excel(df)
+    # Acquirer side is separate and carries its own figures
+    acq = reports["Acquirer_Banks"]
+    abay_acq = acq[acq["BANKS"] == "Abay Bank"].iloc[0]
+    assert abay_acq["CASH_WITHDRAWAL"] == 37
+    assert abay_acq["AMOUNT_CW"] == 402790
+    assert abay_acq["BALANCE_INQUIRY"] == 50
+    cbe_acq = acq[acq["BANKS"] == "CBE"].iloc[0]
+    assert cbe_acq["STATEMENT"] == 1
+    tot_acq = acq[acq["BANKS"] == "Total"].iloc[0]
+    for col in numeric_cols:
+        assert tot_acq[col] == sum(acq[acq["BANKS"] != "Total"][col].fillna(0))
+
+    excel_bytes = build_sett_sum_report_excel(reports)
     assert len(excel_bytes) > 0
     wb2 = openpyxl.load_workbook(io.BytesIO(excel_bytes))
-    ws_out = wb2.active
-    assert ws_out["A1"].value is not None
-    assert "BANKS" in str(ws_out["B2"].value)
+    assert wb2.sheetnames == ["ISS_Banks", "Acquirer_Banks"]
+    for sheet_name in wb2.sheetnames:
+        ws_out = wb2[sheet_name]
+        assert "Report name:" in str(ws_out["A1"].value)
+        assert "SETT(SUM)" in str(ws_out["B1"].value)
+        assert "BANKS" in str(ws_out["B2"].value)
+        assert ws_out.freeze_panes == "A3"
+        assert ws_out.sheet_view.showGridLines is False

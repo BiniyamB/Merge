@@ -432,68 +432,19 @@ if st.session_state.snap_page:
     _render_snapshot_page()
     st.stop()
 
-# ── Sett(Sum) Report (standalone) ──────────────────────────────────────────
-st.markdown('<div class="section-sep"><span>Sett(Sum) Report</span></div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="card"><div class="card-head"><div class="card-icon icon-purple">&#129534;</div>'
-    '<div><p class="card-title">Settlement Summary (Sett(Sum))</p>'
-    '<p class="card-sub">Upload a settlement workbook (two sheets: ISS_BANKS and ACQ_BANKS). Banks that '
-    'appear with the same name in either sheet are merged into one row and every column is summed.</p></div></div>',
-    unsafe_allow_html=True,
-)
-
-sett_file = st.file_uploader("Settlement workbook (bini style)", type=["xls", "xlsx"], key="sett_file")
-
-sett_reports = None
-if sett_file is not None:
-    with st.spinner("Building Sett(Sum) report..."):
-        try:
-            sett_reports = generate_sett_sum_report(sett_file.getvalue())
-        except ValueError as e:
-            st.error(str(e))
-
-# generate_sett_sum_report returns {label: DataFrame}; a stale deployment may
-# still hand back a single DataFrame, so normalise it before use.
-sett_report_items = None
-if isinstance(sett_reports, dict):
-    sett_report_items = list(sett_reports.items())
-elif sett_reports is not None:
-    sett_report_items = [("Sett(Sum)", sett_reports)]
-
-if sett_report_items:
-    tabs = st.tabs([label for label, _ in sett_report_items])
-    for tab, (label, sett_df) in zip(tabs, sett_report_items):
-        with tab:
-            st.dataframe(sett_df, use_container_width=True, hide_index=True, height=360)
-    if st.button("Download Sett(Sum) Report", use_container_width=True, key="dl_sett_btn"):
-        with st.spinner("Building Sett(Sum) workbook..."):
-            sett_excel_bytes = build_sett_sum_report_excel(dict(sett_report_items))
-        sett_filename = "Sett_Sum_Report.xlsx"
-        st.download_button(
-            label="Click to save Sett(Sum) Report",
-            data=sett_excel_bytes,
-            file_name=sett_filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key="dl_sett_actual",
-        )
-        del sett_excel_bytes
-        gc.collect()
-
-st.markdown('</div>', unsafe_allow_html=True)
-
 # ── Mode Selection ───────────────────────────────────────────────────────────
 st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-purple">1</div><div><p class="card-title">Choose report type</p><p class="card-sub">Select the type of reports you want to merge</p></div></div>', unsafe_allow_html=True)
 
-mode_options = ["POS Decline", "POS Success", "POS (Daily)", "ATM (Daily)", "QR"]
+mode_options = ["POS Decline", "POS Success", "POS (Daily)", "ATM (Daily)", "QR", "Sett(Sum)"]
 mode_keys_map = {
     "POS Decline": "pos_decline", "POS Success": "pos_success",
     "POS (Daily)": "pos", "ATM (Daily)": "atm", "QR": "qr",
+    "Sett(Sum)": "sett_sum",
 }
 mode_colors = {
     "POS Decline": "badge-red", "POS Success": "badge-green",
     "POS (Daily)": "badge-purple", "ATM (Daily)": "badge-blue",
-    "QR": "badge-blue",
+    "QR": "badge-blue", "Sett(Sum)": "badge-purple",
 }
 
 cols = st.columns(len(mode_options))
@@ -516,10 +467,67 @@ if st.session_state.mode_key is None:
     st.stop()
 
 mode_key = st.session_state.mode_key
-mode = MODES[mode_key]
 mode_label = [k for k, v in mode_keys_map.items() if v == mode_key][0]
+mode_color = mode_colors.get(mode_label, "badge-blue")
 
-st.markdown(f'<span class="badge {mode_colors.get(mode_label, "badge-blue")}">{mode.label}</span>', unsafe_allow_html=True)
+# ── Sett(Sum) Report (sett_sum mode) ───────────────────────────────────────
+if mode_key == "sett_sum":
+    st.markdown(f'<span class="badge {mode_color}">SETT(SUM)</span>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-blue">2</div>'
+        '<div><p class="card-title">Upload settlement workbook</p>'
+        '<p class="card-sub">Drag &amp; drop your .xls or .xlsx file. Banks that appear with the '
+        'same name in the two sheets (ISS_BANKS and ACQ_BANKS) are merged into one row and every '
+        'column is summed.</p></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    sett_file = st.file_uploader("Upload files", type=["xls", "xlsx"], label_visibility="collapsed", key="sett_file")
+
+    if sett_file is not None:
+        with st.spinner("Building Sett(Sum) report..."):
+            try:
+                sett_reports = generate_sett_sum_report(sett_file.getvalue())
+            except ValueError as e:
+                sett_reports = None
+                st.error(str(e))
+
+        # generate_sett_sum_report returns {label: DataFrame}; a stale
+        # deployment may still hand back a single DataFrame, so normalise it.
+        sett_report_items = None
+        if isinstance(sett_reports, dict):
+            sett_report_items = list(sett_reports.items())
+        elif sett_reports is not None:
+            sett_report_items = [("Sett(Sum)", sett_reports)]
+
+        if sett_report_items:
+            tabs = st.tabs([label for label, _ in sett_report_items])
+            for tab, (label, sett_df) in zip(tabs, sett_report_items):
+                with tab:
+                    st.dataframe(sett_df, use_container_width=True, hide_index=True, height=360)
+            if st.button("Download Sett(Sum) Report", use_container_width=True, key="dl_sett_btn"):
+                with st.spinner("Building Sett(Sum) workbook..."):
+                    sett_excel_bytes = build_sett_sum_report_excel(dict(sett_report_items))
+                sett_filename = "Sett_Sum_Report.xlsx"
+                st.download_button(
+                    label="Click to save Sett(Sum) Report",
+                    data=sett_excel_bytes,
+                    file_name=sett_filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="dl_sett_actual",
+                )
+                del sett_excel_bytes
+                gc.collect()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+mode = MODES[mode_key]
+
+st.markdown(f'<span class="badge {mode_color}">{mode.label}</span>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ── File Upload ──────────────────────────────────────────────────────────────

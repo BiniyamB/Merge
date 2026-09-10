@@ -19,7 +19,12 @@ from merger import MODES, merge_reports, build_filtered_workbook, build_workbook
 
 from snapshot_module import REPORT_DEFAULTS, SERVICE_DEFAULTS, calc_all, build_report_html, fmt_int
 from acquirer_analysis import analyze_atm, analyze_pos, analyze_ips
-from nbe_report import generate_nbe_report, build_nbe_report_excel
+from nbe_report import (
+    generate_nbe_report,
+    build_nbe_report_excel,
+    generate_sett_sum_report,
+    build_sett_sum_report_excel,
+)
 from pos_success_rate import generate_pos_success_rate_report, build_pos_success_rate_excel
 
 # ── Global CSS ───────────────────────────────────────────────────────────────
@@ -427,6 +432,45 @@ if st.session_state.snap_page:
     _render_snapshot_page()
     st.stop()
 
+# ── Sett(Sum) Report (standalone) ──────────────────────────────────────────
+st.markdown('<div class="section-sep"><span>Sett(Sum) Report</span></div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="card"><div class="card-head"><div class="card-icon icon-purple">&#129534;</div>'
+    '<div><p class="card-title">Settlement Summary (Sett(Sum))</p>'
+    '<p class="card-sub">Upload a settlement workbook (two sheets: ISS_BANKS and ACQ_BANKS). Banks that '
+    'appear with the same name in either sheet are merged into one row and every column is summed.</p></div></div>',
+    unsafe_allow_html=True,
+)
+
+sett_file = st.file_uploader("Settlement workbook (bini style)", type=["xls", "xlsx"], key="sett_file")
+
+sett_df = None
+if sett_file is not None:
+    with st.spinner("Building Sett(Sum) report..."):
+        try:
+            sett_df = generate_sett_sum_report(sett_file.getvalue())
+        except ValueError as e:
+            st.error(str(e))
+
+if sett_df is not None:
+    st.dataframe(sett_df, use_container_width=True, hide_index=True, height=380)
+    if st.button("Download Sett(Sum) Report", use_container_width=True, key="dl_sett_btn"):
+        with st.spinner("Building Sett(Sum) workbook..."):
+            sett_excel_bytes = build_sett_sum_report_excel(sett_df)
+        sett_filename = "Sett_Sum_Report.xlsx"
+        st.download_button(
+            label="Click to save Sett(Sum) Report",
+            data=sett_excel_bytes,
+            file_name=sett_filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="dl_sett_actual",
+        )
+        del sett_excel_bytes
+        gc.collect()
+
+st.markdown('</div>', unsafe_allow_html=True)
+
 # ── Mode Selection ───────────────────────────────────────────────────────────
 st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-purple">1</div><div><p class="card-title">Choose report type</p><p class="card-sub">Select the type of reports you want to merge</p></div></div>', unsafe_allow_html=True)
 
@@ -669,18 +713,21 @@ with col_dl2:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# ── NBE Institution Summary Report (POS & ATM only) ──────────────────────────
-if meta["mode_key"] in ("pos", "atm"):
+# ── NBE Institution Summary Report (POS, ATM & POS Decline) ───────────────
+if meta["mode_key"] in ("pos", "atm", "pos_decline"):
     st.markdown('<div class="section-sep"><span>NBE Institution Report</span></div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="card"><div class="card-head"><div class="card-icon icon-purple">&#127974;</div>'
         '<div><p class="card-title">NBE Institution Breakdown Report</p>'
         '<p class="card-sub">Transaction counts and total value (ETB) per institution as Issuer &amp; Acquirer '
-        f'(Filtered for successful {meta["mode_key"].upper()} transactions with Response Code -1 / -1.0)</p></div></div>',
+        f'(Filtered for {meta["mode_key"].upper()} '
+        f'{"declined" if meta["mode_key"] == "pos_decline" else "successful"} transactions'
+        f'{"" if meta["mode_key"] == "pos_decline" else " with Response Code -1 / -1.0"})</p></div></div>',
         unsafe_allow_html=True,
     )
 
-    nbe_df = generate_nbe_report(st.session_state.records, meta["mode_key"])
+    nbe_mode = "pos_decline" if meta["mode_key"] == "pos_decline" else meta["mode_key"]
+    nbe_df = generate_nbe_report(st.session_state.records, nbe_mode)
 
     st.dataframe(
         nbe_df,
@@ -691,10 +738,10 @@ if meta["mode_key"] in ("pos", "atm"):
 
     col_nbe_dl1, col_nbe_dl2 = st.columns(2)
     with col_nbe_dl1:
-        if st.button(f"Download {meta['mode_key'].upper()} NBE Institution Report", use_container_width=True, key="dl_nbe_btn"):
+        if st.button(f"Download {nbe_mode.upper()} NBE Institution Report", use_container_width=True, key="dl_nbe_btn"):
             with st.spinner("Building NBE Report workbook..."):
-                nbe_excel_bytes = build_nbe_report_excel(nbe_df, meta["mode_key"])
-            nbe_filename = f"NBE_{meta['mode_key'].upper()}_Report_{meta['from_date']}_to_{meta['to_date']}.xlsx"
+                nbe_excel_bytes = build_nbe_report_excel(nbe_df, nbe_mode)
+            nbe_filename = f"NBE_{nbe_mode.upper()}_Report_{meta['from_date']}_to_{meta['to_date']}.xlsx"
             st.download_button(
                 label="Click to save NBE Report",
                 data=nbe_excel_bytes,
@@ -704,6 +751,45 @@ if meta["mode_key"] in ("pos", "atm"):
                 key="dl_nbe_actual",
             )
             del nbe_excel_bytes
+            gc.collect()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ── Balance Inquiry NBE Report (POS daily modes only) ───────────────────────
+if meta["mode_key"] == "pos":
+    st.markdown('<div class="section-sep"><span>Balance Inquiry Report</span></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-purple">&#129534;</div>'
+        '<div><p class="card-title">NBE Balance Inquiry Breakdown Report</p>'
+        '<p class="card-sub">Count of balance inquiry transactions per institution as Issuer &amp; Acquirer '
+        '(balance inquiries have no monetary amount)</p></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    bi_df = generate_nbe_report(st.session_state.records, "balance_inquiry")
+
+    st.dataframe(
+        bi_df,
+        use_container_width=True,
+        hide_index=True,
+        height=360,
+    )
+
+    col_bi_dl1, col_bi_dl2 = st.columns(2)
+    with col_bi_dl1:
+        if st.button("Download Balance Inquiry NBE Report", use_container_width=True, key="dl_bi_btn"):
+            with st.spinner("Building Balance Inquiry workbook..."):
+                bi_excel_bytes = build_nbe_report_excel(bi_df, "balance_inquiry")
+            bi_filename = f"BALANCE_INQUIRY_Report_{meta['from_date']}_to_{meta['to_date']}.xlsx"
+            st.download_button(
+                label="Click to save Balance Inquiry Report",
+                data=bi_excel_bytes,
+                file_name=bi_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dl_bi_actual",
+            )
+            del bi_excel_bytes
             gc.collect()
 
     st.markdown('</div>', unsafe_allow_html=True)

@@ -452,14 +452,22 @@ if sett_file is not None:
         except ValueError as e:
             st.error(str(e))
 
-if sett_reports:
-    tabs = st.tabs(list(sett_reports.keys()))
-    for tab, (label, sett_df) in zip(tabs, sett_reports.items()):
+# generate_sett_sum_report returns {label: DataFrame}; a stale deployment may
+# still hand back a single DataFrame, so normalise it before use.
+sett_report_items = None
+if isinstance(sett_reports, dict):
+    sett_report_items = list(sett_reports.items())
+elif sett_reports is not None:
+    sett_report_items = [("Sett(Sum)", sett_reports)]
+
+if sett_report_items:
+    tabs = st.tabs([label for label, _ in sett_report_items])
+    for tab, (label, sett_df) in zip(tabs, sett_report_items):
         with tab:
             st.dataframe(sett_df, use_container_width=True, hide_index=True, height=360)
     if st.button("Download Sett(Sum) Report", use_container_width=True, key="dl_sett_btn"):
         with st.spinner("Building Sett(Sum) workbook..."):
-            sett_excel_bytes = build_sett_sum_report_excel(sett_reports)
+            sett_excel_bytes = build_sett_sum_report_excel(dict(sett_report_items))
         sett_filename = "Sett_Sum_Report.xlsx"
         st.download_button(
             label="Click to save Sett(Sum) Report",

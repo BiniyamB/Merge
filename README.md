@@ -1,17 +1,19 @@
 # POS & ATM & QR Report Merger
 
 A small web dashboard that merges **any number of Excel reports** into
-**one clean Excel report**, in five modes:
+**one clean Excel report**, across several modes:
 
 - **POS Decline** → merged in the `POS_Transaction_Decline_Report` layout
 - **POS Success** → merged in the `POS_Transaction_SVFE_Report` layout
 - **POS** → merged in the `Daily_Tranaction_Report_SmartVista_POS` layout
 - **ATM** → merged in the `Daily_Tranaction_Report_SmartVista_ATM` layout
-- **QR** → transfer exports merged in the `QR_Export` layout (the
-  `EXPORT_TABLE` structure of the "July - December 2025 Source" report)
+- **QR** → per-bank bank-summary workbooks merged and rendered as a styled
+  "Successful QR Interoperable Transactions" report
+- **P2P** → the same summary merge for IPS, rendered as a styled "Successful
+  IPS Interoperable Transactions" report
 
 When you open the app it first asks which type of report you want to merge
-(a **POS Decline**, **POS Success**, **POS**, **ATM** or **QR** button); the whole workflow — upload,
+(a **POS Decline**, **POS Success**, **POS**, **ATM**, **QR** or **P2P** button); the whole workflow — upload,
 blank-column removal, header/reshuffle checks, missing/extra-column
 warnings, preview and download — then runs in that mode. A breadcrumb bar
 (`Home › POS Decline` …) lets you jump back to the mode picker at any time.
@@ -34,12 +36,11 @@ merged result**:
 
 ## Features
 
-- On opening, a mode picker asks for **POS Decline**, **POS Success**, **POS**, **ATM** or **QR**
+- On opening, a mode picker asks for **POS Decline**, **POS Success**, **POS**, **ATM**, **QR** or **P2P**
   reports; a breadcrumb bar (Home > mode > results) lets you go back to the
   picker
 - Drag & drop any number of `.xls` / `.xlsx` reports (or browse for them)
-- Automatically detects the report table (a sheet with an `ACQUIRER` header,
-  or — in QR mode — a `DESTINATION_BANK` / `SOURCE_BANK` / `TRX_DATE` header)
+- Automatically detects the report table (a sheet with an `ACQUIRER` header)
   and skips title rows, repeated page-break headers, and empty rows
 - Removes blank/spacer columns (e.g. the empty columns B, D, F in the
   `POS_Transaction_Decline_Report` format)
@@ -54,8 +55,9 @@ merged result**:
   - ATM: `ACQUIRER, ISSUER, CARD_NUMBER, TRANS_DATE, TRANS_TIME,
     TRANS_TYPE, AMOUNT, CURRENCY, RESP, RRN, UTRNNO, TERMINAL_ID,
     ADDRESS_NAME`
-  - QR: `DESTINATION_BANK, SOURCE_BANK, TRX_DATE, DBTR_ACCT, CDTR_ACCT,
-    AMOUNT, TX_ID, STATUS`
+- **QR / P2P summary modes** (see below) accept per-bank bank-summary
+  workbooks with columns `NO, BANK_ID, BANK_NAME, ISSUER_TXN_COUNT,
+  ISSUER_TOTAL_AMOUNT, ACQUIRER_TXN_COUNT, ACQUIRER_TOTAL_AMOUNT`
 - **Handles reshuffled columns**: a report whose columns are in a different
   order (e.g. `UTRNNO` before `RRN`, or `TIME` instead of `TRANS_TIME`)
   still merges into the standard layout. The dashboard flags such files with
@@ -79,9 +81,9 @@ merged result**:
   and a preview of the merged table, with one-click download of the merged
   `.xlsx`
 
-## POS, ATM and QR modes
+## POS and ATM modes
 
-POS, ATM and QR modes merge reports into the SmartVista/daily (plain
+POS and ATM modes merge reports into the SmartVista/daily (plain
 tabular) layout:
 
 - sheet name `Report`, **header in row 1** (no title block), plain sheet —
@@ -89,11 +91,26 @@ tabular) layout:
   or frozen panes)
 - header variants are matched by name (`TIME` → `TRANS_TIME`,
   `ADDRESS_NAME` → `ADDRESS`, `UTRNNO`/`FE UTRNNO` → `UTRNNO`, `PAN` →
-  `CARD_NUMBER`, and in QR mode `Destination Bank` → `DESTINATION_BANK`,
-  `Debit Acct` → `DBTR_ACCT`, `Transaction ID` → `TX_ID`, …)
+  `CARD_NUMBER`, …)
 - output filename follows the source convention, e.g.
   `Daily_Tranaction_Report_SmartVista_ATM_15_Aug_26_to_15_Aug_26_Merged.xlsx`
-  or `QR_Export_07_Jul_25_to_22_Dec_25_Merged.xlsx`
+
+## QR / P2P summary modes
+
+QR and P2P (IPS) modes are dedicated bank-summary flows (in the Streamlit
+app). They accept one or more "success for source and destination" bank
+summary workbooks (`NO, BANK_ID, BANK_NAME, ISSUER_TXN_COUNT,
+ISSUER_TOTAL_AMOUNT, ACQUIRER_TXN_COUNT, ACQUIRER_TOTAL_AMOUNT`), merge
+every numeric column per bank across the uploaded files, and produce two
+downloads:
+
+- a **merged summary** workbook (banks listed in the standard canonical
+  order, "As a Destination" = issuer columns, "As a Source" = acquirer
+  columns, plus a `TOTAL` row with `=SUM(...)` formulas), and
+- a **styled successful-transaction report** ("Successful QR Interoperable
+  Transactions" / "Successful IPS Interoperable Transactions") with the
+  bank headers, green fills, accounting number formats and borders of the
+  reference layouts, e.g. `Successful QR Transaction for September 9,2026.xlsx`
 
 ## Run it
 
@@ -180,11 +197,17 @@ Row 1:  ACQUIRER | ISSUER | CARD_NUMBER | TRANS_DATE | TRANS_TIME | TRANS_TYPE |
 Row 2+: transaction rows (sorted by date, then time)
 ```
 
-### QR (transfer-export layout)
+### QR / P2P (styled successful-transaction layout)
+
+The report mimics the reference layout exactly:
 
 ```
-Row 1:  DESTINATION_BANK | SOURCE_BANK | TRX_DATE | DBTR_ACCT | CDTR_ACCT | AMOUNT | TX_ID | STATUS
-Row 2+: transaction rows (sorted by date)
+QR:  rows 2-4  EthSwitch S.C. / QR Report / date
+     rows 6-7  Bank | As a Destination (No.Transactions, Values) | As a Source ...
+     rows 8-43 the 36 canonical banks, row 44 =SUM(...) "Total"
+P2P (IPS): rows 1-4  EthSwitch S.C. / IPS Successful Report / date / subtitle
+     rows 5-7  BANK | Successful Transactions As Destination | As a Source ...
+     rows 7-57 the 51 canonical banks, row 58 =SUM(...) "TOTAL"
 ```
 
 ## Tests

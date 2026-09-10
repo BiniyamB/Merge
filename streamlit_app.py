@@ -3,6 +3,7 @@
 import gc
 import html as html_lib
 import io
+from datetime import date as _date
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -26,6 +27,12 @@ from nbe_report import (
     build_sett_sum_report_excel,
 )
 from pos_success_rate import generate_pos_success_rate_report, build_pos_success_rate_excel
+from interop_report import (
+    merge_bank_summary_files,
+    build_success_report_excel,
+    build_merged_summary_excel,
+    success_report_filename,
+)
 
 # ── Global CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
@@ -242,6 +249,7 @@ for key, default in [
     ("unique_values_cache", {}),
     ("snap_page", False),
     ("duplicate_records", []),
+    ("interop_records", []),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -435,16 +443,16 @@ if st.session_state.snap_page:
 # ── Mode Selection ───────────────────────────────────────────────────────────
 st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-purple">1</div><div><p class="card-title">Choose report type</p><p class="card-sub">Select the type of reports you want to merge</p></div></div>', unsafe_allow_html=True)
 
-mode_options = ["POS Decline", "POS Success", "POS (Daily)", "ATM (Daily)", "QR", "Sett(Sum)"]
+mode_options = ["POS Decline", "POS Success", "POS (Daily)", "ATM (Daily)", "QR", "P2P", "Sett(Sum)"]
 mode_keys_map = {
     "POS Decline": "pos_decline", "POS Success": "pos_success",
     "POS (Daily)": "pos", "ATM (Daily)": "atm", "QR": "qr",
-    "Sett(Sum)": "sett_sum",
+    "P2P": "p2p", "Sett(Sum)": "sett_sum",
 }
 mode_colors = {
     "POS Decline": "badge-red", "POS Success": "badge-green",
     "POS (Daily)": "badge-purple", "ATM (Daily)": "badge-blue",
-    "QR": "badge-blue", "Sett(Sum)": "badge-purple",
+    "QR": "badge-blue", "P2P": "badge-green", "Sett(Sum)": "badge-purple",
 }
 
 cols = st.columns(len(mode_options))
@@ -525,6 +533,136 @@ if mode_key == "sett_sum":
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
+# ── QR / P2P Successful Transaction Report (interop modes) ────────────────
+if mode_key in ("qr", "p2p"):
+    interop_label = "QR" if mode_key == "qr" else "P2P"
+    st.markdown(f'<span class="badge {mode_color}">{interop_label} (Summary)</span>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        f'<div class="card"><div class="card-head"><div class="card-icon icon-blue">2</div>'
+        f'<div><p class="card-title">Upload "{interop_label} success for source and destination" exports</p>'
+        f'<p class="card-sub">Drag &amp; drop one or more .xlsx bank summary workbooks '
+        f'(NO, BANK_ID, BANK_NAME, ISSUER_TXN_COUNT, ISSUER_TOTAL_AMOUNT, '
+        f'ACQUIRER_TXN_COUNT, ACQUIRER_TOTAL_AMOUNT). Rows are merged per bank '
+        f'and every numeric column is summed across the uploaded files.</p></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    interop_files = st.file_uploader(
+        "Upload files",
+        type=["xlsx", "xls"],
+        accept_multiple_files=True,
+        label_visibility="collapsed",
+    )
+
+    if not interop_files:
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
+    report_date = st.date_input("Report date", value=_date.today(), key="interop_report_date")
+
+    if st.session_state.merged_meta is None or st.session_state.merged_meta.get("mode_key") not in ("qr", "p2p"):
+        if st.button("Merge Reports", use_container_width=True):
+            with st.spinner("Merging bank summaries..."):
+                try:
+                    payloads = [(f.name, f.getvalue()) for f in interop_files]
+                    interop_records, interop_per_file, interop_warnings = merge_bank_summary_files(payloads, mode_key)
+                except ValueError as e:
+                    st.error(str(e))
+                    st.stop()
+                except Exception as e:
+                    st.error(f"Unexpected error during merge: {e}")
+                    st.stop()
+
+            st.session_state.interop_records = interop_records
+            st.session_state.merged_meta = {
+                "mode_key": mode_key,
+                "interop_per_file": interop_per_file,
+                "interop_warnings": interop_warnings,
+                "report_date": report_date,
+            }
+            st.session_state.filter_sheets = []
+            st.session_state.pending_filters = {}
+            gc.collect()
+            st.rerun()
+
+        st.stop()
+
+    meta = st.session_state.merged_meta
+    records = st.session_state.interop_records
+    report_date = meta.get("report_date") or report_date
+
+    bank_rows = [r for r in records if r.get("BANK_NAME") not in ("Total", "TOTAL")]
+    total_row = records[-1]
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-green">&#10003;</div>'
+        '<div><p class="card-title">Merged Report</p>'
+        '<p class="card-sub">Bank summaries consolidated successfully</p></div></div>',
+        unsafe_allow_html=True,
+    )
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Banks", len(bank_rows))
+    c2.metric("Issuer Txn Count", f"{total_row['ISSUER_TXN_COUNT']:,}")
+    c3.metric("Issuer Value (ETB)", f"{total_row['ISSUER_TOTAL_AMOUNT']:,.2f}")
+    c4.metric("Acquirer Txn Count", f"{total_row['ACQUIRER_TXN_COUNT']:,}")
+    c5.metric("Acquirer Value (ETB)", f"{total_row['ACQUIRER_TOTAL_AMOUNT']:,.2f}")
+
+    if meta.get("interop_warnings"):
+        with st.expander(f"Warnings ({len(meta['interop_warnings'])})", expanded=False):
+            for w in meta["interop_warnings"]:
+                st.warning(w)
+
+    with st.expander("Files merged", expanded=False):
+        file_df = pd.DataFrame(meta["interop_per_file"])
+        st.dataframe(file_df, use_container_width=True, hide_index=True)
+
+    st.markdown(
+        '<div class="card-head"><div class="card-icon icon-blue">&#128269;</div>'
+        '<div><p class="card-title">Preview</p>'
+        '<p class="card-sub">All banks merged across the uploaded files</p></div></div>',
+        unsafe_allow_html=True,
+    )
+    st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True, height=420)
+
+    st.markdown('<div class="section-sep"><span>Download</span></div>', unsafe_allow_html=True)
+    col_dl1, col_dl2 = st.columns(2)
+
+    with col_dl1:
+        if st.button("Download Successful Transaction Report", use_container_width=True, key="dl_interop_styled"):
+            with st.spinner("Building styled report..."):
+                styled_bytes = build_success_report_excel(records, mode_key, report_date)
+            styled_filename = success_report_filename(mode_key, report_date)
+            st.download_button(
+                label="Click to save",
+                data=styled_bytes,
+                file_name=styled_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dl_interop_styled_actual",
+            )
+            del styled_bytes
+            gc.collect()
+
+    with col_dl2:
+        if st.button("Download Merged Summary", use_container_width=True, key="dl_interop_merged"):
+            with st.spinner("Building merged workbook..."):
+                merged_bytes = build_merged_summary_excel(records, mode_key)
+            merged_filename = f"Successful_{interop_label}_Summary_{report_date.strftime('%Y-%m-%d')}.xlsx"
+            st.download_button(
+                label="Click to save",
+                data=merged_bytes,
+                file_name=merged_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dl_interop_merged_actual",
+            )
+            del merged_bytes
+            gc.collect()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
 mode = MODES[mode_key]
 
 st.markdown(f'<span class="badge {mode_color}">{mode.label}</span>', unsafe_allow_html=True)
@@ -574,7 +712,7 @@ if st.session_state.merged_meta is None:
         value=False,
         help="Keep only the first occurrence of each identical row and remove the rest. "
              "ACQUIRER, ISSUER, TRANS_TYPE and CURRENCY are excluded from the comparison "
-             "in every report mode (POS Decline, POS Success, POS Daily, ATM, QR) — "
+             "in every report mode (POS Decline, POS Success, POS Daily, ATM) — "
              "so two rows are duplicates when every other column (card/account number, "
              "date, time, amount, response code, reference numbers, terminal, address) matches, "
              "regardless of which acquirer or issuer processed them. "

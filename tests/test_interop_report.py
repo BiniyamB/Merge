@@ -21,11 +21,12 @@ def _summary_xlsx(rows, filename: str = "in.xlsx") -> tuple[str, bytes]:
 
 
 # Banks are deliberately written with input-style names so alias mapping is
-# exercised; all three resolve to QR canonical names.
+# exercised; all three resolve to QR canonical names. Totals are balanced:
+# issuer 15 / 1500 on both sides.
 _SAMPLE = [
-    [1, "18", "Abay Bank", 92, 423763, 97, 765485],
-    [2, "1", "Amhara Bank", 101, 2246260.76, 23, 1289245],
-    [3, "26", "ZamZam", 10, 500.5, 30, 1000.25],
+    [1, "18", "Abay Bank", 10, 1000, 5, 500],
+    [2, "1", "Amhara Bank", 4, 400, 8, 800],
+    [3, "26", "ZamZam", 1, 100, 2, 200],
 ]
 
 
@@ -55,10 +56,10 @@ def test_parse_bank_summary_file():
     assert len(rows) == 3
     row = rows[0]
     assert row["BANK_NAME"] == "Abay Bank"
-    assert row["ISSUER_TXN_COUNT"] == 92
-    assert row["ISSUER_TOTAL_AMOUNT"] == 423763
-    assert row["ACQUIRER_TXN_COUNT"] == 97
-    assert row["ACQUIRER_TOTAL_AMOUNT"] == 765485
+    assert row["ISSUER_TXN_COUNT"] == 10
+    assert row["ISSUER_TOTAL_AMOUNT"] == 1000
+    assert row["ACQUIRER_TXN_COUNT"] == 5
+    assert row["ACQUIRER_TOTAL_AMOUNT"] == 500
 
 
 def test_parse_bank_summary_file_tolerant_headers():
@@ -96,10 +97,10 @@ def test_merge_single_file_rows_and_total():
     assert records[-2]["BANK_NAME"] == "ZamZam"
     total = records[-1]
     assert total["BANK_NAME"] == "Total"
-    assert total["ISSUER_TXN_COUNT"] == 92 + 101 + 10
-    assert total["ISSUER_TOTAL_AMOUNT"] == round(423763 + 2246260.76 + 500.5, 2)
-    assert total["ACQUIRER_TXN_COUNT"] == 97 + 23 + 30
-    assert total["ACQUIRER_TOTAL_AMOUNT"] == round(765485 + 1289245 + 1000.25, 2)
+    assert total["ISSUER_TXN_COUNT"] == 15
+    assert total["ISSUER_TOTAL_AMOUNT"] == 1500
+    assert total["ACQUIRER_TXN_COUNT"] == 15
+    assert total["ACQUIRER_TOTAL_AMOUNT"] == 1500
 
 
 def test_merge_across_multiple_files_sums_per_bank():
@@ -113,11 +114,11 @@ def test_merge_across_multiple_files_sums_per_bank():
     assert merged_abay["ISSUER_TXN_COUNT"] == single_abay["ISSUER_TXN_COUNT"]
     assert merged_abay["ACQUIRER_TOTAL_AMOUNT"] == single_abay["ACQUIRER_TOTAL_AMOUNT"]
     merged_zamzam = next(r for r in records_both if r["BANK_NAME"] == "ZamZam")
-    assert merged_zamzam["ISSUER_TXN_COUNT"] == 10
-    assert merged_zamzam["ISSUER_TOTAL_AMOUNT"] == 500.5
+    assert merged_zamzam["ISSUER_TXN_COUNT"] == 1
+    assert merged_zamzam["ISSUER_TOTAL_AMOUNT"] == 100
     total = records_both[-1]
     assert total["BANK_NAME"] == "Total"
-    assert total["ISSUER_TXN_COUNT"] == 92 + 101 + 10
+    assert total["ISSUER_TXN_COUNT"] == 15
 
 
 def test_merge_with_missing_banks_leaves_zero_rows():
@@ -131,11 +132,40 @@ def test_merge_with_missing_banks_leaves_zero_rows():
     assert empty["ISSUER_TOTAL_AMOUNT"] == 0.0
 
 
-def test_merge_warns_on_unrecognised_bank():
-    filename, data = _summary_xlsx([[9, "99", "Totally Unknown Bank", 1, 2.0, 3, 4.0]], "bad.xlsx")
+def test_new_institution_is_included_after_canonical_banks():
+    filename, data = _summary_xlsx(
+        [[1, "18", "Abay Bank", 10, 1000, 5, 500],
+         [2, "90", "Future Bank S.C.", 6, 6000, 6, 6000]],
+        "new_bank.xlsx",
+    )
     records, per_file, warnings = ir.merge_bank_summary_files([(filename, data)], "qr")
-    assert per_file[0]["rows"] == 0
-    assert any("unrecognised bank" in w for w in warnings)
+    assert per_file[0]["rows"] == 2  # the unknown bank is merged, not dropped
+    names = [r["BANK_NAME"] for r in records]
+    assert "Future Bank S.C." in names
+    # canonical banks come first, the new institution is appended before Total
+    canonical = names[:len(ir.QR_BANK_ORDER)]
+    assert canonical == ir.QR_BANK_ORDER
+    assert names[len(ir.QR_BANK_ORDER)] == "Future Bank S.C."
+    assert names[-1] == "Total"
+    assert any("new institution 'Future Bank S.C.'" in w for w in warnings)
+    new_rec = records[len(ir.QR_BANK_ORDER)]
+    assert new_rec["NO"] == len(ir.QR_BANK_ORDER) + 1
+    assert new_rec["ISSUER_TXN_COUNT"] == 6
+    assert new_rec["ACQUIRER_TOTAL_AMOUNT"] == 6000
+
+
+def test_totals_are_balanced_even_when_raw_sides_differ():
+    # issuer: 10/1000, acquirer: 12/1200 -> both sides reported as the larger
+    filename, data = _summary_xlsx(
+        [[1, "18", "Abay Bank", 10, 1000, 12, 1200]], "unbalanced.xlsx",
+    )
+    records, _, warnings = ir.merge_bank_summary_files([(filename, data)], "qr")
+    total = records[-1]
+    assert total["ISSUER_TXN_COUNT"] == 12
+    assert total["ACQUIRER_TXN_COUNT"] == 12
+    assert total["ISSUER_TOTAL_AMOUNT"] == 1200
+    assert total["ACQUIRER_TOTAL_AMOUNT"] == 1200
+    assert any("Balancing" in w for w in warnings)
 
 
 def test_merge_corrupt_file_is_skipped():
@@ -172,11 +202,13 @@ def test_success_report_filename():
 
 def test_build_success_report_qr_structure():
     filename, data = _summary_xlsx([
-        [1, "18", "Abay Bank", 92, 423763, 97, 765485],
-        [7, "1", "Awash Bank", 0, 0, 23, 0],
-        [36, "26", "ZamZam", 10, 0, 0, 1000],
+        # balanced across the three banks: issuer 15 / 1500, acquirer 15 / 1500
+        [1, "18", "Abay Bank", 10, 1000, 5, 500],
+        [7, "1", "Awash Bank", 0, 0, 6, 600],
+        [36, "26", "ZamZam", 5, 500, 4, 400],
     ], "qr.xlsx")
-    records, _, _ = ir.merge_bank_summary_files([(filename, data)], "qr")
+    records, _, warnings = ir.merge_bank_summary_files([(filename, data)], "qr")
+    assert warnings == []
     out = ir.build_success_report_excel(records, "qr", date(2026, 9, 9))
     ws = load_workbook(io.BytesIO(out)).active
     assert ws.title == "Sheet1"
@@ -195,27 +227,47 @@ def test_build_success_report_qr_structure():
     assert "C2:G2" in merged and "C6:C7" in merged and "D6:E6" in merged
     # data: Abay at row 8, Awash at row 14 (index 7), ZamZam at row 43
     assert ws["C8"].value == "Abay"
-    assert ws["D8"].value == 92
-    assert ws["G8"].value == 765485
+    assert ws["D8"].value == 10
+    assert ws["G8"].value == 500
     assert ws["C14"].value == "Awash"
     assert ws["C43"].value == "ZamZam"
     # zeros are rendered blank, non-zero kept
     assert ws.cell(row=14, column=4).value is None      # Awash issuer count 0
     assert ws.cell(row=14, column=5).value is None      # Awash issuer value 0
-    assert ws.cell(row=14, column=6).value == 23
-    assert ws.cell(row=14, column=7).value is None
-    assert ws.cell(row=43, column=4).value == 10
-    assert ws.cell(row=43, column=5).value is None
-    assert ws.cell(row=43, column=6).value is None
-    assert ws.cell(row=43, column=7).value == 1000
-    # total row
+    assert ws.cell(row=14, column=6).value == 6
+    assert ws.cell(row=14, column=7).value == 600
+    assert ws.cell(row=43, column=4).value == 5
+    assert ws.cell(row=43, column=5).value == 500
+    assert ws.cell(row=43, column=6).value == 4
+    assert ws.cell(row=43, column=7).value == 400
+    # total row: issued/acquirer equal in count and value
     assert ws["C44"].value == "Total"
     assert ws["C44"].font.bold is False
-    assert ws["D44"].value == "=SUM(D8:D43)"
+    assert ws["D44"].value == 15
+    assert ws["F44"].value == 15
+    assert ws["E44"].value == 1500
+    assert ws["G44"].value == 1500
     assert ws["D44"].font.bold is True
-    assert ws["G44"].value == "=SUM(G8:G43)"
     # accounting number format applied to values
     assert ws["D8"].number_format.startswith("_ * #,##0")
+
+
+def test_build_success_report_includes_new_institution():
+    filename, data = _summary_xlsx([
+        [1, "18", "Abay Bank", 10, 1000, 5, 500],
+        [37, "90", "Future Bank S.C.", 2, 200, 7, 700],
+    ], "qr.xlsx")
+    records, _, _ = ir.merge_bank_summary_files([(filename, data)], "qr")
+    out = ir.build_success_report_excel(records, "qr", date(2026, 9, 9))
+    ws = load_workbook(io.BytesIO(out)).active
+    # canonical banks occupy rows 8..43, new bank at 44, Total at 45
+    assert ws["C44"].value == "Future Bank S.C."
+    assert ws["D44"].value == 2
+    assert ws["G44"].value == 700
+    assert ws["C45"].value == "Total"
+    # balanced: issuer 12/1200 vs acquirer 12/1200
+    assert ws["D45"].value == 12
+    assert ws["G45"].value == 1200
 
 
 def test_build_success_report_p2p_structure():
@@ -241,8 +293,11 @@ def test_build_success_report_p2p_structure():
     assert ws["F7"].value == 169001490.98
     assert ws["B58"].value == "TOTAL"
     assert ws["B58"].font.bold is True
-    assert ws["C58"].value == "=SUM(C7:C57)"
-    assert ws["F58"].value == "=SUM(F7:F57)"
+    # unbalanced raw input -> both sides show the larger figure (equal)
+    assert ws["C58"].value == ws["E58"].value
+    assert ws["D58"].value == ws["F58"].value
+    assert ws["C58"].value == 57647                 # max(10894, 57647)
+    assert ws["D58"].value == 191672509.94          # max(63683566.60, 191672509.94)
     # value cells are right-aligned
     assert ws["C7"].alignment.horizontal == "right"
 
@@ -260,5 +315,8 @@ def test_build_merged_summary_excel():
     assert ws["A3"].value == 1 and ws["B3"].value == "Abay"
     total_r = 2 + 1 + len(ir.QR_BANK_ORDER)  # header + banks, TOTAL below
     assert ws.cell(row=total_r, column=2).value == "TOTAL"
-    assert ws.cell(row=total_r, column=3).value == f"=SUM(C3:C{total_r - 1})"
-    assert ws.cell(row=total_r, column=5).value == f"=SUM(E3:E{total_r - 1})"
+    # balanced totals: count 15 and value 1500 on both sides
+    assert ws.cell(row=total_r, column=3).value == 15
+    assert ws.cell(row=total_r, column=4).value == 1500
+    assert ws.cell(row=total_r, column=5).value == 15
+    assert ws.cell(row=total_r, column=6).value == 1500

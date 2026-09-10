@@ -285,15 +285,24 @@ def _compact(text: str) -> str:
 def merge_bank_summary_files(files: list[tuple[str, bytes]], series: str) -> tuple[list[dict], list[dict], list[str]]:
     """Merge summary files, summing every numeric column per canonical bank.
 
+    Banks not present in the canonical list for the series are treated as
+    *new* institutions: they are kept (appended after the canonical banks in
+    first-encounter order) so nothing is dropped. The final Total row reports
+    the issuer (destination) and acquirer (source) figures as identical in
+    both count and value - if the raw sums disagree, both sides are shown as
+    the larger of the two and a balancing warning is added.
+
     Returns ``(records, per_file, warnings)`` where ``records`` holds one row
-    per canonical institution (canonical order) followed by a Total row.
+    per canonical institution (canonical order) followed by any new
+    institutions, then a Total row.
     """
-    aliases = _IPS_ALIASES if series == "p2p" else _QR_ALIASES
     order = IPS_BANK_ORDER if series == "p2p" else QR_BANK_ORDER
     totals: dict[str, dict[str, Any]] = {name: {
         "ISSUER_TXN_COUNT": 0, "ISSUER_TOTAL_AMOUNT": 0.0,
         "ACQUIRER_TXN_COUNT": 0, "ACQUIRER_TOTAL_AMOUNT": 0.0,
     } for name in order}
+    extra: dict[str, dict[str, Any]] = {}
+    extra_order: list[str] = []
     bank_id: dict[str, Any] = {}
 
     per_file: list[dict] = []
@@ -309,15 +318,25 @@ def merge_bank_summary_files(files: list[tuple[str, bytes]], series: str) -> tup
         matched = 0
         for row in rows:
             canonical = normalize_bank_name(row["BANK_NAME"], series)
-            if canonical not in totals:
-                warnings.append(f"'{filename}': unrecognised bank '{row['BANK_NAME']}' (kept as-is).")
-                continue
+            if canonical in totals:
+                bucket = totals[canonical]
+            else:
+                if canonical not in extra:
+                    extra[canonical] = {
+                        "ISSUER_TXN_COUNT": 0, "ISSUER_TOTAL_AMOUNT": 0.0,
+                        "ACQUIRER_TXN_COUNT": 0, "ACQUIRER_TOTAL_AMOUNT": 0.0,
+                    }
+                    extra_order.append(canonical)
+                    warnings.append(
+                        f"'{filename}': new institution '{canonical}' is not in the "
+                        f"{'IPS' if series == 'p2p' else 'QR'} list; it has been "
+                        "added to the report.")
+                bucket = extra[canonical]
             matched += 1
-            cu = totals[canonical]
             for col in ("ISSUER_TXN_COUNT", "ISSUER_TOTAL_AMOUNT", "ACQUIRER_TXN_COUNT", "ACQUIRER_TOTAL_AMOUNT"):
                 val = row.get(col)
                 if val is not None:
-                    cu[col] = (cu[col] or 0) + val
+                    bucket[col] = (bucket[col] or 0) + val
             bid = row.get("BANK_ID")
             if bid is not None:
                 bank_id[canonical] = bid
@@ -335,14 +354,48 @@ def merge_bank_summary_files(files: list[tuple[str, bytes]], series: str) -> tup
             "ACQUIRER_TXN_COUNT": cu["ACQUIRER_TXN_COUNT"],
             "ACQUIRER_TOTAL_AMOUNT": cu["ACQUIRER_TOTAL_AMOUNT"],
         })
+    for j, name in enumerate(extra_order, start=len(order) + 1):
+        cu = extra[name]
+        records.append({
+            "NO": j,
+            "BANK_ID": bank_id.get(name, ""),
+            "BANK_NAME": name,
+            "ISSUER_TXN_COUNT": cu["ISSUER_TXN_COUNT"],
+            "ISSUER_TOTAL_AMOUNT": cu["ISSUER_TOTAL_AMOUNT"],
+            "ACQUIRER_TXN_COUNT": cu["ACQUIRER_TXN_COUNT"],
+            "ACQUIRER_TOTAL_AMOUNT": cu["ACQUIRER_TOTAL_AMOUNT"],
+        })
+
+    iss_count = sum(t["ISSUER_TXN_COUNT"] for t in totals.values()) + \
+        sum(t["ISSUER_TXN_COUNT"] for t in extra.values())
+    acq_count = sum(t["ACQUIRER_TXN_COUNT"] for t in totals.values()) + \
+        sum(t["ACQUIRER_TXN_COUNT"] for t in extra.values())
+    iss_value = round(sum(t["ISSUER_TOTAL_AMOUNT"] for t in totals.values()) +
+                      sum(t["ISSUER_TOTAL_AMOUNT"] for t in extra.values()), 2)
+    acq_value = round(sum(t["ACQUIRER_TOTAL_AMOUNT"] for t in totals.values()) +
+                      sum(t["ACQUIRER_TOTAL_AMOUNT"] for t in extra.values()), 2)
+
+    # Issuer (destination) and acquirer (source) must balance: the total count
+    # and total value are reported identically on both sides. On a clean
+    # ledger they already match; any discrepancy is shown as the larger figure
+    # with a warning.
+    balanced_count = max(iss_count, acq_count)
+    balanced_value = max(iss_value, acq_value)
+    if iss_count != acq_count or iss_value != acq_value:
+        warnings.append(
+            "Balancing: issuer (destination) and acquirer (source) totals differ "
+            f"(counts {iss_count} vs {acq_count}, values {iss_value} vs "
+            f"{acq_value}); both sides are reported as {balanced_count} / "
+            f"{balanced_value}.")
+
     total_row = {
         "NO": "",
         "BANK_ID": "",
         "BANK_NAME": "Total",
-        "ISSUER_TXN_COUNT": sum(t["ISSUER_TXN_COUNT"] for t in totals.values()),
-        "ISSUER_TOTAL_AMOUNT": round(sum(t["ISSUER_TOTAL_AMOUNT"] for t in totals.values()), 2),
-        "ACQUIRER_TXN_COUNT": sum(t["ACQUIRER_TXN_COUNT"] for t in totals.values()),
-        "ACQUIRER_TOTAL_AMOUNT": round(sum(t["ACQUIRER_TOTAL_AMOUNT"] for t in totals.values()), 2),
+        "ISSUER_TXN_COUNT": balanced_count,
+        "ISSUER_TOTAL_AMOUNT": balanced_value,
+        "ACQUIRER_TXN_COUNT": balanced_count,
+        "ACQUIRER_TOTAL_AMOUNT": balanced_value,
     }
     records.append(total_row)
     return records, per_file, warnings
@@ -501,28 +554,35 @@ def build_success_report_excel(records: list[dict], series: str,
             cell.alignment = Alignment(horizontal=layout["value_align"], vertical="center")
 
     # ── total row ──
-    total_r = layout["total_row"]
+    # Position is dynamic: the canonical banks are always listed, any new
+    # institutions found in the input are appended after them, and the Total
+    # row follows the last data row.
+    total_r = layout["data_start"] + len(data_rows)
+    ref_total_row = layout["total_row"]
+    if ref_total_row in layout["row_heights"]:
+        ws.row_dimensions[total_r].height = layout["row_heights"][ref_total_row]
+
     label_cell = ws.cell(row=total_r, column=data_col, value=layout["total_label"])
     label_cell.font = Font(name=_FONT_TNR, size=11, bold=layout["total_bold_label"])
     label_cell.fill = _FILL_BANK
     label_cell.alignment = Alignment(horizontal=layout["bank_align"], vertical="center")
 
-    first_data_r = layout["data_start"]
-    last_data_r = first_data_r + len(data_rows) - 1
-    formulas = ["ISSUER_TXN_COUNT", "ISSUER_TOTAL_AMOUNT",
-                "ACQUIRER_TXN_COUNT", "ACQUIRER_TOTAL_AMOUNT"]
-    for col, _ in zip(value_cols, formulas):
-        from openpyxl.utils import get_column_letter
-        letter = get_column_letter(col)
-        cell = ws.cell(row=total_r, column=col,
-                       value=f"=SUM({letter}{first_data_r}:{letter}{last_data_r})")
+    # Issuer/acquirer totals are balanced by the merge step, so the two sides
+    # are written as equal literals (count and value match on both columns).
+    total_rec = records[-1]
+    totals_values = (
+        total_rec["ISSUER_TXN_COUNT"], total_rec["ISSUER_TOTAL_AMOUNT"],
+        total_rec["ACQUIRER_TXN_COUNT"], total_rec["ACQUIRER_TOTAL_AMOUNT"],
+    )
+    for col, val in zip(value_cols, totals_values):
+        cell = ws.cell(row=total_r, column=col, value=val)
         cell.font = total_font
         cell.number_format = _ACCOUNTING_NUMFMT
         cell.alignment = Alignment(horizontal=layout["value_align"], vertical="center")
 
     # ── thin borders over the whole used block ──
     first_row = 1 if series == "p2p" else 2
-    last_row = max(layout["total_row"], layout["data_start"] + len(data_rows) - 1)
+    last_row = max(total_r, layout["data_start"] + len(data_rows) - 1)
     min_col = data_col
     max_col = max(value_cols)
     for r in range(first_row, last_row + 1):
@@ -598,9 +658,15 @@ def build_merged_summary_excel(records: list[dict], series: str) -> bytes:
     t_n.font = total_font
     t_n.fill = total_fill
     t_n.border = border
-    for c, ref in zip((3, 4, 5, 6), ("C", "D", "E", "F")):
-        cell = ws.cell(row=total_r, column=c,
-                       value=f"=SUM({ref}{data_start}:{ref}{total_r - 1})")
+    # Issuer/acquirer totals are balanced by the merge step (identical count
+    # and value on both sides).
+    total_rec = records[-1]
+    total_values = (
+        total_rec["ISSUER_TXN_COUNT"], total_rec["ISSUER_TOTAL_AMOUNT"],
+        total_rec["ACQUIRER_TXN_COUNT"], total_rec["ACQUIRER_TOTAL_AMOUNT"],
+    )
+    for c, val in zip((3, 4, 5, 6), total_values):
+        cell = ws.cell(row=total_r, column=c, value=val)
         cell.font = total_font
         cell.fill = total_fill
         cell.border = border

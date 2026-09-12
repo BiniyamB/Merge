@@ -420,10 +420,11 @@ def generate_nbe_report(records: list[dict[str, Any]], mode_key: str) -> pd.Data
             "S/N": idx,
             "BANKS": b,
             f"{trans_label} As Issuer (Count)": i_cnt,
-            f"{trans_label} As Acquirer (Count)": a_cnt,
         }
         if include_amount:
             row[f"{trans_label} As Issuer (Amount ETB)"] = i_amt
+        row[f"{trans_label} As Acquirer (Count)"] = a_cnt
+        if include_amount:
             row[f"{trans_label} As Acquirer (Amount ETB)"] = a_amt
         rows.append(row)
 
@@ -432,10 +433,11 @@ def generate_nbe_report(records: list[dict[str, Any]], mode_key: str) -> pd.Data
         "S/N": "",
         "BANKS": "Total",
         f"{trans_label} As Issuer (Count)": tot_iss_cnt,
-        f"{trans_label} As Acquirer (Count)": tot_acq_cnt,
     }
     if include_amount:
         total_row[f"{trans_label} As Issuer (Amount ETB)"] = round(tot_iss_amt, 2)
+    total_row[f"{trans_label} As Acquirer (Count)"] = tot_acq_cnt
+    if include_amount:
         total_row[f"{trans_label} As Acquirer (Amount ETB)"] = round(tot_acq_amt, 2)
     rows.append(total_row)
 

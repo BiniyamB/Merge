@@ -284,6 +284,15 @@ def test_build_nbe_report_excel_atm_decline_6col():
     assert tot_row["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 1
     assert tot_row["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 1
     assert tot_row["ATM DECLINE RESPONSE CODES As Issuer (Amount ETB)"] == 500.0
+    # column order: issuer count, issuer amount, acquirer count, acquirer amount
+    data_row = [r for r in range(4, ws.max_row + 1)
+                if ws.cell(row=r, column=2).value == "Abay Bank"][0]
+    assert ws.cell(row=data_row, column=3).value == 1       # Issuer Count
+    assert ws.cell(row=data_row, column=4).value == 500.0   # Issuer Amount
+    assert ws.cell(row=data_row, column=5).value == 0       # Acquirer Count
+    assert ws.cell(row=data_row, column=6).value == 0.0     # Acquirer Amount
+    assert ws.cell(row=data_row, column=3).number_format == "#,##0"
+    assert ws.cell(row=data_row, column=4).number_format == "#,##0.00"
 
 
 def test_generate_sett_sum_report_label_collision():

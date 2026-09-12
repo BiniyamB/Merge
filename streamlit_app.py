@@ -912,8 +912,8 @@ if meta["mode_key"] in ("pos", "atm", "pos_decline"):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── Balance Inquiry NBE Report (POS daily modes only) ───────────────────────
-if meta["mode_key"] == "pos":
+# ── Balance Inquiry NBE Report (POS / ATM daily modes) ─────────────────────
+if meta["mode_key"] in ("pos", "atm"):
     st.markdown('<div class="section-sep"><span>Balance Inquiry Report</span></div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="card"><div class="card-head"><div class="card-icon icon-purple">&#129534;</div>'

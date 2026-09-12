@@ -302,7 +302,7 @@ _NBE_MODE_CONFIGS: dict[str, dict] = {
         "label": "ATM DECLINE RESPONSE CODES",
         "valid_types": None,
         "success_only": False,
-        "include_amount": False,
+        "include_amount": True,
         "exclude_resp_codes": ATM_DECLINE_EXCLUDED_RESP_CODES,
     },
 }
@@ -449,7 +449,7 @@ def build_nbe_report_excel(df: pd.DataFrame, mode_key: str) -> bytes:
     - pos / pos_decline: PURCHASE with Count + Amount (6 columns)
     - atm:               CASH WITHDRAWAL with Count + Amount (6 columns)
     - balance_inquiry:   BALANCE INQUIRY counts only (4 columns)
-    - atm_decline:       ATM DECLINE RESPONSE CODES counts only (4 columns)
+    - atm_decline:       ATM DECLINE RESPONSE CODES with Count + Amount (6 columns)
     """
     wb = openpyxl.Workbook()
     ws = wb.active

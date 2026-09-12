@@ -957,9 +957,8 @@ if meta["mode_key"] == "atm":
     st.markdown(
         '<div class="card"><div class="card-head"><div class="card-icon icon-pink">&#9888;</div>'
         '<div><p class="card-title">ATM Decline Response Codes Breakdown Report</p>'
-        '<p class="card-sub">Count of ATM transactions per institution as Issuer &amp; Acquirer, '
-        'excluding response codes -1, 503, 821, 862, 901, 904, 911, 912, 915 '
-        '(no monetary amount)</p></div></div>',
+        '<p class="card-sub">Count and value (ETB) of ATM transactions per institution as Issuer &amp; Acquirer, '
+        'excluding response codes -1, 503, 821, 862, 901, 904, 911, 912, 915</p></div></div>',
         unsafe_allow_html=True,
     )
 

@@ -196,12 +196,16 @@ def test_generate_nbe_report_atm_decline():
     df = generate_nbe_report(records, mode_key="atm_decline")
     assert "ATM DECLINE RESPONSE CODES As Issuer (Count)" in df.columns
     assert "ATM DECLINE RESPONSE CODES As Acquirer (Count)" in df.columns
-    assert "Amount" not in " ".join(df.columns)
+    assert "ATM DECLINE RESPONSE CODES As Issuer (Amount ETB)" in df.columns
+    assert "ATM DECLINE RESPONSE CODES As Acquirer (Amount ETB)" in df.columns
 
-    # Abay: issuer for 953.0, acquirer for 906 (901 / -1 / 503 excluded)
+    # Abay: issuer for 953.0 (amount 0), acquirer for 906 (amount 0); the -1
+    # row (400.0) and the 503 / 901 rows are excluded so no amount leaks in
     abay_row = df[df["BANKS"] == "Abay Bank"].iloc[0]
     assert abay_row["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 1
     assert abay_row["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 1
+    assert abay_row["ATM DECLINE RESPONSE CODES As Issuer (Amount ETB)"] == 0.0
+    assert abay_row["ATM DECLINE RESPONSE CODES As Acquirer (Amount ETB)"] == 0.0
 
     cbe_row = df[df["BANKS"] == "CBE"].iloc[0]
     assert cbe_row["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 2
@@ -214,12 +218,52 @@ def test_generate_nbe_report_atm_decline():
     tot_row = df[df["BANKS"] == "Total"].iloc[0]
     assert tot_row["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 4
     assert tot_row["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 4
+    assert tot_row["ATM DECLINE RESPONSE CODES As Issuer (Amount ETB)"] == 0.0
+    assert tot_row["ATM DECLINE RESPONSE CODES As Acquirer (Amount ETB)"] == 0.0
 
 
-def test_build_nbe_report_excel_atm_decline_4col():
-    """Verify 4-column count-only layout for the ATM decline workbook."""
+def test_generate_nbe_report_atm_decline_amounts():
+    """Amounts from counted (non-excluded) transactions are aggregated."""
     records = [
-        {"TRANS_TYPE": "ATM Cash withdrawal", "RESP": "802", "ISSUER": "Abay Bank", "ACQUIRER": "Wegagen Bank", "AMOUNT": 0},
+        {"TRANS_TYPE": "ATM Cash withdrawal", "RESP": "802", "ISSUER": "Abay Bank", "ACQUIRER": "Wegagen Bank", "AMOUNT": 500.0},
+        {"TRANS_TYPE": "Cash withdrawal", "RESP": "820", "ISSUER": "CBE", "ACQUIRER": "Abay Bank", "AMOUNT": 250.5},
+        {"TRANS_TYPE": "ATM Balance inquiry", "RESP": "820", "ISSUER": "Wegagen Bank", "ACQUIRER": "CBE", "AMOUNT": 300.0},
+        # excluded codes: even though they carry amounts, nothing is counted
+        {"TRANS_TYPE": "Cash withdrawal", "RESP": "901", "ISSUER": "Abay Bank", "ACQUIRER": "CBE", "AMOUNT": 9999.0},
+        {"TRANS_TYPE": "Cash withdrawal", "RESP": "-1", "ISSUER": "CBE", "ACQUIRER": "Abay Bank", "AMOUNT": 8888.0},
+    ]
+
+    df = generate_nbe_report(records, mode_key="atm_decline")
+
+    abay = df[df["BANKS"] == "Abay Bank"].iloc[0]
+    assert abay["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 1
+    assert abay["ATM DECLINE RESPONSE CODES As Issuer (Amount ETB)"] == 500.0
+    assert abay["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 1
+    assert abay["ATM DECLINE RESPONSE CODES As Acquirer (Amount ETB)"] == 250.5
+
+    cbe = df[df["BANKS"] == "CBE"].iloc[0]
+    assert cbe["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 1
+    assert cbe["ATM DECLINE RESPONSE CODES As Issuer (Amount ETB)"] == 250.5
+    assert cbe["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 1
+    assert cbe["ATM DECLINE RESPONSE CODES As Acquirer (Amount ETB)"] == 300.0
+
+    wegagen = df[df["BANKS"] == "Wegagen Bank"].iloc[0]
+    assert wegagen["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 1
+    assert wegagen["ATM DECLINE RESPONSE CODES As Issuer (Amount ETB)"] == 300.0
+    assert wegagen["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 1
+    assert wegagen["ATM DECLINE RESPONSE CODES As Acquirer (Amount ETB)"] == 500.0
+
+    tot = df[df["BANKS"] == "Total"].iloc[0]
+    assert tot["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 3
+    assert tot["ATM DECLINE RESPONSE CODES As Issuer (Amount ETB)"] == 1050.5
+    assert tot["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 3
+    assert tot["ATM DECLINE RESPONSE CODES As Acquirer (Amount ETB)"] == 1050.5
+
+
+def test_build_nbe_report_excel_atm_decline_6col():
+    """Verify the 6-column Count + Amount layout for the ATM decline workbook."""
+    records = [
+        {"TRANS_TYPE": "ATM Cash withdrawal", "RESP": "802", "ISSUER": "Abay Bank", "ACQUIRER": "Wegagen Bank", "AMOUNT": 500.0},
         {"TRANS_TYPE": "Cash withdrawal", "RESP": "915", "ISSUER": "CBE", "ACQUIRER": "BOA", "AMOUNT": 0},
     ]
     df = generate_nbe_report(records, mode_key="atm_decline")
@@ -232,13 +276,14 @@ def test_build_nbe_report_excel_atm_decline_4col():
     assert ws["A3"].value == "S/N"
     assert ws["B3"].value == "BANKS"
     assert ws["C3"].value == "Count"
-    assert ws["D3"].value == "Count"
-    assert ws["E3"].value is None
-    assert ws["F3"].value is None
-    # only the CBE declined (-1/915) row is excluded, so total is a single counted row
+    assert ws["D3"].value == "Amount (ETB)"
+    assert ws["E3"].value == "Count"
+    assert ws["F3"].value == "Amount (ETB)"
+    # the CBE 915 row is excluded, so only Abay/Wegagen are counted
     tot_row = df[df["BANKS"] == "Total"].iloc[0]
     assert tot_row["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 1
     assert tot_row["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 1
+    assert tot_row["ATM DECLINE RESPONSE CODES As Issuer (Amount ETB)"] == 500.0
 
 
 def test_generate_sett_sum_report_label_collision():

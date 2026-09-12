@@ -172,6 +172,75 @@ def test_build_nbe_report_excel_balance_inquiry_4col():
     assert ws["F3"].value is None
 
 
+def test_generate_nbe_report_atm_decline():
+    """ATM Decline report counts all response codes except the excluded ones.
+
+    Excluded codes: -1, 503, 821, 862, 901, 904, 911, 912, 915. Records with
+    those codes are skipped; every other code (any trans type) is counted.
+    """
+    records = [
+        # success code -1 excluded
+        {"TRANS_TYPE": "ATM Cash withdrawal", "RESP": "-1.0", "ISSUER": "Abay Bank", "ACQUIRER": "Wegagen Bank", "AMOUNT": 400.0},
+        # known decline codes excluded
+        {"TRANS_TYPE": "cash withdrawal", "RESP": "503", "ISSUER": "Abay Bank", "ACQUIRER": "BOA", "AMOUNT": 0},
+        {"TRANS_TYPE": "Cash withdrawal", "RESP": 915, "ISSUER": "CBE", "ACQUIRER": "BOA", "AMOUNT": 0},
+        {"TRANS_TYPE": "cash withdrawal", "RESP": "901.0", "ISSUER": "CBE", "ACQUIRER": "Abay Bank", "AMOUNT": 0},
+        {"TRANS_TYPE": "ATM Cash withdrawal", "RESP": "912", "ISSUER": "CBE", "ACQUIRER": "BOA", "AMOUNT": 0},
+        # other response codes are counted (both trans types)
+        {"TRANS_TYPE": "Cash withdrawal", "RESP": "802", "ISSUER": "CBE", "ACQUIRER": "Wegagen Bank", "AMOUNT": 0},
+        {"TRANS_TYPE": "ATM Balance inquiry", "RESP": "820", "ISSUER": "CBE", "ACQUIRER": "BOA", "AMOUNT": 0},
+        {"TRANS_TYPE": "balance inquiry", "RESP": "953.0", "ISSUER": "Abay Bank", "ACQUIRER": "CBE", "AMOUNT": 0},
+        {"TRANS_TYPE": "Cash withdrawal", "RESP": 906, "ISSUER": "Wegagen Bank", "ACQUIRER": "Abay Bank", "AMOUNT": 0},
+    ]
+
+    df = generate_nbe_report(records, mode_key="atm_decline")
+    assert "ATM DECLINE RESPONSE CODES As Issuer (Count)" in df.columns
+    assert "ATM DECLINE RESPONSE CODES As Acquirer (Count)" in df.columns
+    assert "Amount" not in " ".join(df.columns)
+
+    # Abay: issuer for 953.0, acquirer for 906 (901 / -1 / 503 excluded)
+    abay_row = df[df["BANKS"] == "Abay Bank"].iloc[0]
+    assert abay_row["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 1
+    assert abay_row["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 1
+
+    cbe_row = df[df["BANKS"] == "CBE"].iloc[0]
+    assert cbe_row["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 2
+    assert cbe_row["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 1
+
+    wegagen_row = df[df["BANKS"] == "Wegagen Bank"].iloc[0]
+    assert wegagen_row["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 1
+    assert wegagen_row["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 1
+
+    tot_row = df[df["BANKS"] == "Total"].iloc[0]
+    assert tot_row["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 4
+    assert tot_row["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 4
+
+
+def test_build_nbe_report_excel_atm_decline_4col():
+    """Verify 4-column count-only layout for the ATM decline workbook."""
+    records = [
+        {"TRANS_TYPE": "ATM Cash withdrawal", "RESP": "802", "ISSUER": "Abay Bank", "ACQUIRER": "Wegagen Bank", "AMOUNT": 0},
+        {"TRANS_TYPE": "Cash withdrawal", "RESP": "915", "ISSUER": "CBE", "ACQUIRER": "BOA", "AMOUNT": 0},
+    ]
+    df = generate_nbe_report(records, mode_key="atm_decline")
+    excel_bytes = build_nbe_report_excel(df, mode_key="atm_decline")
+    assert len(excel_bytes) > 0
+
+    wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
+    ws = wb.active
+    assert "ATM DECLINE" in ws["A1"].value
+    assert ws["A3"].value == "S/N"
+    assert ws["B3"].value == "BANKS"
+    assert ws["C3"].value == "Count"
+    assert ws["D3"].value == "Count"
+    assert ws["E3"].value is None
+    assert ws["F3"].value is None
+    # only the CBE declined (-1/915) row is excluded, so total is a single counted row
+    tot_row = df[df["BANKS"] == "Total"].iloc[0]
+    assert tot_row["ATM DECLINE RESPONSE CODES As Issuer (Count)"] == 1
+    assert tot_row["ATM DECLINE RESPONSE CODES As Acquirer (Count)"] == 1
+
+
 def test_generate_sett_sum_report_label_collision():
     """Both sheets may spell the bank header 'ISS_BANKS'; sides must not collide."""
     wb = openpyxl.Workbook()

@@ -951,6 +951,46 @@ if meta["mode_key"] in ("pos", "atm"):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
+# ── ATM Decline Response Codes Report (ATM daily mode only) ─────────────────
+if meta["mode_key"] == "atm":
+    st.markdown('<div class="section-sep"><span>ATM Decline Response Codes</span></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-pink">&#9888;</div>'
+        '<div><p class="card-title">ATM Decline Response Codes Breakdown Report</p>'
+        '<p class="card-sub">Count of ATM transactions per institution as Issuer &amp; Acquirer, '
+        'excluding response codes -1, 503, 821, 862, 901, 904, 911, 912, 915 '
+        '(no monetary amount)</p></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    adc_df = generate_nbe_report(st.session_state.records, "atm_decline")
+
+    st.dataframe(
+        adc_df,
+        use_container_width=True,
+        hide_index=True,
+        height=360,
+    )
+
+    col_adc_dl1, col_adc_dl2 = st.columns(2)
+    with col_adc_dl1:
+        if st.button("Download ATM Decline Response Codes Report", use_container_width=True, key="dl_adc_btn"):
+            with st.spinner("Building ATM Decline Response Codes workbook..."):
+                adc_excel_bytes = build_nbe_report_excel(adc_df, "atm_decline")
+            adc_filename = f"ATM_DECLINE_RESPONSE_CODES_Report_{meta['from_date']}_to_{meta['to_date']}.xlsx"
+            st.download_button(
+                label="Click to save ATM Decline Response Codes Report",
+                data=adc_excel_bytes,
+                file_name=adc_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dl_adc_actual",
+            )
+            del adc_excel_bytes
+            gc.collect()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 # ── POS Success Rate Summary Report (POS modes only) ──────────────────────────
 if meta["mode_key"] in ("pos", "pos_decline", "pos_success"):
     st.markdown('<div class="section-sep"><span>POS Success Rate Report</span></div>', unsafe_allow_html=True)

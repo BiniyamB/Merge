@@ -253,6 +253,23 @@ def _is_success_resp(val: Any) -> bool:
         return False
 
 
+def _resp_float(val: Any) -> float | None:
+    """Parse a RESP value into a float, or None when blank / unparseable."""
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    try:
+        return float(str(val).strip())
+    except (ValueError, TypeError):
+        return None
+
+
+# Response codes that are EXCLUDED from the ATM Decline report. Every other
+# response code is counted per institution (counts only, no monetary value).
+# -1 is the success code; the rest are the well-known decline codes.
+ATM_DECLINE_EXCLUDED_RESP_CODES = frozenset(
+    {-1, 503, 821, 862, 901, 904, 911, 912, 915}
+)
+
 # NBE Mode configuration: label, valid TRANS_TYPE values, whether only
 # successful (-1 / -1.0) transactions are counted, and whether monetary
 # amounts are reported (balance inquiries have no amount).
@@ -281,30 +298,39 @@ _NBE_MODE_CONFIGS: dict[str, dict] = {
         "success_only": False,
         "include_amount": False,
     },
+    "atm_decline": {
+        "label": "ATM DECLINE RESPONSE CODES",
+        "valid_types": None,
+        "success_only": False,
+        "include_amount": False,
+        "exclude_resp_codes": ATM_DECLINE_EXCLUDED_RESP_CODES,
+    },
 }
 
 
 def generate_nbe_report(records: list[dict[str, Any]], mode_key: str) -> pd.DataFrame:
     """Generate NBE Institution Summary DataFrame for POS / ATM / POS Decline /
-    Balance Inquiry records.
+    Balance Inquiry / ATM Decline records.
 
     Filters:
     - pos:           TRANS_TYPE in ('pos purchase', 'purchase'), RESP in (-1, -1.0)
     - atm:           TRANS_TYPE in ('atm cash withdrawal', 'cash withdrawal'), RESP in (-1, -1.0)
     - pos_decline:   TRANS_TYPE in ('pos purchase', 'purchase'), any RESP (declined files)
     - balance_inquiry: TRANS_TYPE in ('pos balance inquiry', 'balance inquiry'), counts only
+    - atm_decline:   any TRANS_TYPE, RESP NOT in ATM_DECLINE_EXCLUDED_RESP_CODES, counts only
     """
     cfg = _NBE_MODE_CONFIGS.get(mode_key)
     if cfg is None:
         raise ValueError(
-            f"NBE report is only supported for 'pos', 'atm', 'pos_decline' and "
-            f"'balance_inquiry' modes, got '{mode_key}'"
+            f"NBE report is only supported for 'pos', 'atm', 'pos_decline', "
+            f"'balance_inquiry' and 'atm_decline' modes, got '{mode_key}'"
         )
 
-    valid_types = set(cfg["valid_types"])
+    valid_types = cfg["valid_types"]
     trans_label = cfg["label"]
     success_only = cfg["success_only"]
     include_amount = cfg["include_amount"]
+    exclude_resp_codes = cfg.get("exclude_resp_codes")
 
     # Data aggregators per institution
     stats: dict[str, dict[str, float]] = {}
@@ -321,9 +347,9 @@ def generate_nbe_report(records: list[dict[str, Any]], mode_key: str) -> pd.Data
 
     # Process matching records
     for r in records:
-        # Check transaction type
+        # Check transaction type (only when the mode restricts it)
         t_type = str(r.get("TRANS_TYPE", "")).strip().lower()
-        if t_type not in valid_types:
+        if valid_types is not None and t_type not in valid_types:
             continue
 
         # Check response code (-1 / -1.0) only for success-filtered modes.
@@ -337,6 +363,10 @@ def generate_nbe_report(records: list[dict[str, Any]], mode_key: str) -> pd.Data
             resp_val = r.get("STATUS")
 
         if success_only and not _is_success_resp(resp_val):
+            continue
+
+        # ATM decline report counts every response code except the excluded ones
+        if exclude_resp_codes and _resp_float(resp_val) in exclude_resp_codes:
             continue
 
         # Amount (only tracked for modes that report monetary values)
@@ -419,6 +449,7 @@ def build_nbe_report_excel(df: pd.DataFrame, mode_key: str) -> bytes:
     - pos / pos_decline: PURCHASE with Count + Amount (6 columns)
     - atm:               CASH WITHDRAWAL with Count + Amount (6 columns)
     - balance_inquiry:   BALANCE INQUIRY counts only (4 columns)
+    - atm_decline:       ATM DECLINE RESPONSE CODES counts only (4 columns)
     """
     wb = openpyxl.Workbook()
     ws = wb.active

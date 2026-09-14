@@ -912,39 +912,55 @@ if meta["mode_key"] in ("pos", "atm", "pos_decline"):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── Balance Inquiry NBE Report (POS / ATM daily modes) ─────────────────────
+# ── Balance Inquiry NBE Reports (POS / ATM daily modes) ────────────────────
 if meta["mode_key"] in ("pos", "atm"):
     st.markdown('<div class="section-sep"><span>Balance Inquiry Report</span></div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="card"><div class="card-head"><div class="card-icon icon-purple">&#129534;</div>'
         '<div><p class="card-title">NBE Balance Inquiry Breakdown Report</p>'
-        '<p class="card-sub">Count of balance inquiry transactions per institution as Issuer &amp; Acquirer '
+        '<p class="card-sub">Balance inquiry transactions split by result '
         '(balance inquiries have no monetary amount)</p></div></div>',
         unsafe_allow_html=True,
     )
 
-    bi_df = generate_nbe_report(st.session_state.records, "balance_inquiry")
+    bi_meta = [
+        ("balance_inquiry_success", "Success Balance Inquiry",
+         "Successful balance inquiries with Response Code -1 / -1.0",
+         "BALANCE_INQUIRY_SUCCESS_Report"),
+        ("balance_inquiry_decline", "Decline Balance Inquiry",
+         "Declined balance inquiries excluding response codes -1, 503, 821, 862, 901, 904, 911, 912, 915",
+         "BALANCE_INQUIRY_DECLINE_Report"),
+    ]
+    for mode_key, title, subtitle, filename_prefix in bi_meta:
+        st.markdown(
+            f'<div class="card"><div class="card-head"><div class="card-icon icon-purple">{title[:1]}</div>'
+            f'<div><p class="card-title">{title}</p>'
+            f'<p class="card-sub">{subtitle}</p></div></div>',
+            unsafe_allow_html=True,
+        )
 
-    st.dataframe(
-        bi_df,
-        use_container_width=True,
-        hide_index=True,
-        height=360,
-    )
+        bi_df = generate_nbe_report(st.session_state.records, mode_key)
 
-    col_bi_dl1, col_bi_dl2 = st.columns(2)
-    with col_bi_dl1:
-        if st.button("Download Balance Inquiry NBE Report", use_container_width=True, key="dl_bi_btn"):
-            with st.spinner("Building Balance Inquiry workbook..."):
-                bi_excel_bytes = build_nbe_report_excel(bi_df, "balance_inquiry")
-            bi_filename = f"BALANCE_INQUIRY_Report_{meta['from_date']}_to_{meta['to_date']}.xlsx"
+        st.dataframe(
+            bi_df,
+            use_container_width=True,
+            hide_index=True,
+            height=360,
+        )
+
+        dl_key1 = f"dl_{mode_key}_btn"
+        dl_key2 = f"dl_{mode_key}_actual"
+        if st.button(f"Download {title}", use_container_width=True, key=dl_key1):
+            with st.spinner(f"Building {title} workbook..."):
+                bi_excel_bytes = build_nbe_report_excel(bi_df, mode_key)
+            bi_filename = f"{filename_prefix}_{meta['from_date']}_to_{meta['to_date']}.xlsx"
             st.download_button(
-                label="Click to save Balance Inquiry Report",
+                label=f"Click to save {title} Report",
                 data=bi_excel_bytes,
                 file_name=bi_filename,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
-                key="dl_bi_actual",
+                key=dl_key2,
             )
             del bi_excel_bytes
             gc.collect()

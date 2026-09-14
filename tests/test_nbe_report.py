@@ -151,6 +151,101 @@ def test_generate_nbe_report_balance_inquiry():
     assert tot_row["BALANCE INQUIRY As Acquirer (Count)"] == 3
 
 
+def test_generate_nbe_report_balance_inquiry_success():
+    """Success Balance Inquiry counts only RESP -1 / -1.0 balance inquiries."""
+    records = [
+        {"TRANS_TYPE": "POS balance inquiry", "RESP": "-1", "ISSUER": "Abay Bank", "ACQUIRER": "Wegagen Bank", "AMOUNT": 0.0},
+        {"TRANS_TYPE": "balance inquiry", "RESP": "-1.0", "ISSUER": "CBE", "ACQUIRER": "Dashen Bank", "AMOUNT": 0.0},
+        {"TRANS_TYPE": "POS balance inquiry", "RESP": "801", "ISSUER": "CBE", "ACQUIRER": "BOA", "AMOUNT": 0.0},
+        {"TRANS_TYPE": "POS balance inquiry", "RESP": "901", "ISSUER": "CBE", "ACQUIRER": "Abay Bank", "AMOUNT": 0.0},
+        # Excluded: purchase transaction
+        {"TRANS_TYPE": "purchase", "RESP": "-1", "ISSUER": "CBE", "ACQUIRER": "BOA", "AMOUNT": 100.0},
+    ]
+
+    df = generate_nbe_report(records, mode_key="balance_inquiry_success")
+    assert "SUCCESS BALANCE INQUIRY As Issuer (Count)" in df.columns
+    assert "SUCCESS BALANCE INQUIRY As Acquirer (Count)" in df.columns
+
+    abay_row = df[df["BANKS"] == "Abay Bank"].iloc[0]
+    assert abay_row["SUCCESS BALANCE INQUIRY As Issuer (Count)"] == 1
+    assert abay_row["SUCCESS BALANCE INQUIRY As Acquirer (Count)"] == 0
+
+    cbe_row = df[df["BANKS"] == "CBE"].iloc[0]
+    assert cbe_row["SUCCESS BALANCE INQUIRY As Issuer (Count)"] == 1
+    assert cbe_row["SUCCESS BALANCE INQUIRY As Acquirer (Count)"] == 0
+
+    dashen_row = df[df["BANKS"] == "Dashen Bank"].iloc[0]
+    assert dashen_row["SUCCESS BALANCE INQUIRY As Acquirer (Count)"] == 1
+
+    tot_row = df[df["BANKS"] == "Total"].iloc[0]
+    assert tot_row["SUCCESS BALANCE INQUIRY As Issuer (Count)"] == 2
+    assert tot_row["SUCCESS BALANCE INQUIRY As Acquirer (Count)"] == 2
+
+
+def test_generate_nbe_report_balance_inquiry_decline():
+    """Decline Balance Inquiry counts balance inquiries whose RESP is not in the
+    excluded set {-1, 503, 821, 862, 901, 904, 911, 912, 915}."""
+    records = [
+        {"TRANS_TYPE": "POS balance inquiry", "RESP": "-1", "ISSUER": "Abay Bank", "ACQUIRER": "Wegagen Bank", "AMOUNT": 0.0},
+        {"TRANS_TYPE": "balance inquiry", "RESP": "503", "ISSUER": "CBE", "ACQUIRER": "Dashen Bank", "AMOUNT": 0.0},
+        {"TRANS_TYPE": "POS balance inquiry", "RESP": "801", "ISSUER": "CBE", "ACQUIRER": "BOA", "AMOUNT": 0.0},
+        {"TRANS_TYPE": "POS balance inquiry", "RESP": "901", "ISSUER": "CBE", "ACQUIRER": "Abay Bank", "AMOUNT": 0.0},
+        {"TRANS_TYPE": "balance inquiry", "RESP": "915", "ISSUER": "Abay Bank", "ACQUIRER": "CBE", "AMOUNT": 0.0},
+        # Excluded: purchase transaction
+        {"TRANS_TYPE": "purchase", "RESP": "906", "ISSUER": "CBE", "ACQUIRER": "BOA", "AMOUNT": 100.0},
+    ]
+
+    df = generate_nbe_report(records, mode_key="balance_inquiry_decline")
+    assert "DECLINE BALANCE INQUIRY As Issuer (Count)" in df.columns
+    assert "DECLINE BALANCE INQUIRY As Acquirer (Count)" in df.columns
+
+    # CBE 801 as issuer is counted (503 and 915 excluded)
+    cbe_row = df[df["BANKS"] == "CBE"].iloc[0]
+    assert cbe_row["DECLINE BALANCE INQUIRY As Issuer (Count)"] == 1
+    assert cbe_row["DECLINE BALANCE INQUIRY As Acquirer (Count)"] == 0
+
+    # Abay: 915 (issuer) and 901 (acquirer) are both excluded
+    abay_row = df[df["BANKS"] == "Abay Bank"].iloc[0]
+    assert abay_row["DECLINE BALANCE INQUIRY As Issuer (Count)"] == 0
+    assert abay_row["DECLINE BALANCE INQUIRY As Acquirer (Count)"] == 0
+
+    # Wegagen: -1 excluded, so no count
+    wegagen_row = df[df["BANKS"] == "Wegagen Bank"].iloc[0]
+    assert wegagen_row["DECLINE BALANCE INQUIRY As Acquirer (Count)"] == 0
+
+    # BOA is the acquirer of the counted 801 record
+    boa_row = df[df["BANKS"] == "BOA"].iloc[0]
+    assert boa_row["DECLINE BALANCE INQUIRY As Acquirer (Count)"] == 1
+
+    tot_row = df[df["BANKS"] == "Total"].iloc[0]
+    assert tot_row["DECLINE BALANCE INQUIRY As Issuer (Count)"] == 1
+    assert tot_row["DECLINE BALANCE INQUIRY As Acquirer (Count)"] == 1
+
+
+def test_build_nbe_report_excel_balance_inquiry_split_4col():
+    """Verify 4-column count-only layout for both split balance inquiry modes."""
+    for mode_key, label in (("balance_inquiry_success", "SUCCESS BALANCE INQUIRY"),
+                            ("balance_inquiry_decline", "DECLINE BALANCE INQUIRY")):
+        records = [
+            {"TRANS_TYPE": "POS balance inquiry", "RESP": "-1", "ISSUER": "Abay Bank", "ACQUIRER": "Wegagen Bank", "AMOUNT": 0.0},
+            {"TRANS_TYPE": "balance inquiry", "RESP": "801", "ISSUER": "CBE", "ACQUIRER": "Dashen Bank", "AMOUNT": 0.0},
+        ]
+        df = generate_nbe_report(records, mode_key=mode_key)
+        excel_bytes = build_nbe_report_excel(df, mode_key=mode_key)
+        assert len(excel_bytes) > 0
+
+        wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
+        ws = wb.active
+        assert "NBE REPORT" in ws["A1"].value
+        assert label in ws["A1"].value
+        assert ws["A3"].value == "S/N"
+        assert ws["B3"].value == "BANKS"
+        assert ws["C3"].value == "Count"
+        assert ws["D3"].value == "Count"
+        assert ws["E3"].value is None
+        assert ws["F3"].value is None
+
+
 def test_build_nbe_report_excel_balance_inquiry_4col():
     """Verify 4-column layout for balance inquiry workbook (no amount columns)."""
     records = [

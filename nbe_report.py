@@ -298,6 +298,19 @@ _NBE_MODE_CONFIGS: dict[str, dict] = {
         "success_only": False,
         "include_amount": False,
     },
+    "balance_inquiry_success": {
+        "label": "SUCCESS BALANCE INQUIRY",
+        "valid_types": ("pos balance inquiry", "balance inquiry"),
+        "success_only": True,
+        "include_amount": False,
+    },
+    "balance_inquiry_decline": {
+        "label": "DECLINE BALANCE INQUIRY",
+        "valid_types": ("pos balance inquiry", "balance inquiry"),
+        "success_only": False,
+        "include_amount": False,
+        "exclude_resp_codes": ATM_DECLINE_EXCLUDED_RESP_CODES,
+    },
     "atm_decline": {
         "label": "ATM DECLINE RESPONSE CODES",
         "valid_types": None,
@@ -310,20 +323,25 @@ _NBE_MODE_CONFIGS: dict[str, dict] = {
 
 def generate_nbe_report(records: list[dict[str, Any]], mode_key: str) -> pd.DataFrame:
     """Generate NBE Institution Summary DataFrame for POS / ATM / POS Decline /
-    Balance Inquiry / ATM Decline records.
+    Balance Inquiry (success, decline, combined) / ATM Decline records.
 
     Filters:
     - pos:           TRANS_TYPE in ('pos purchase', 'purchase'), RESP in (-1, -1.0)
     - atm:           TRANS_TYPE in ('atm cash withdrawal', 'cash withdrawal'), RESP in (-1, -1.0)
     - pos_decline:   TRANS_TYPE in ('pos purchase', 'purchase'), any RESP (declined files)
     - balance_inquiry: TRANS_TYPE in ('pos balance inquiry', 'balance inquiry'), counts only
+    - balance_inquiry_success: TRANS_TYPE in ('pos balance inquiry', 'balance inquiry'),
+                        RESP in (-1, -1.0), counts only
+    - balance_inquiry_decline: TRANS_TYPE in ('pos balance inquiry', 'balance inquiry'),
+                        RESP NOT in ATM_DECLINE_EXCLUDED_RESP_CODES, counts only
     - atm_decline:   any TRANS_TYPE, RESP NOT in ATM_DECLINE_EXCLUDED_RESP_CODES, counts only
     """
     cfg = _NBE_MODE_CONFIGS.get(mode_key)
     if cfg is None:
         raise ValueError(
             f"NBE report is only supported for 'pos', 'atm', 'pos_decline', "
-            f"'balance_inquiry' and 'atm_decline' modes, got '{mode_key}'"
+            f"'balance_inquiry', 'balance_inquiry_success', "
+            f"'balance_inquiry_decline' and 'atm_decline' modes, got '{mode_key}'"
         )
 
     valid_types = cfg["valid_types"]
@@ -450,7 +468,8 @@ def build_nbe_report_excel(df: pd.DataFrame, mode_key: str) -> bytes:
     ``mode_key`` selects the report type and therefore the column layout:
     - pos / pos_decline: PURCHASE with Count + Amount (6 columns)
     - atm:               CASH WITHDRAWAL with Count + Amount (6 columns)
-    - balance_inquiry:   BALANCE INQUIRY counts only (4 columns)
+    - balance_inquiry / balance_inquiry_success / balance_inquiry_decline:
+                         BALANCE INQUIRY style, counts only (4 columns)
     - atm_decline:       ATM DECLINE RESPONSE CODES with Count + Amount (6 columns)
     """
     wb = openpyxl.Workbook()

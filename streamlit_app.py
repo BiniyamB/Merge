@@ -42,6 +42,7 @@ from ips_report import (
 
 # ── Global CSS (dark / light themes) ──────────────────────────────────────
 _THEME = st.session_state.get("theme", "dark")
+st.session_state.setdefault("mode_key", "pos_decline")
 
 _PALETTES = {
     "dark": {

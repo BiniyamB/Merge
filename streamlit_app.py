@@ -43,6 +43,7 @@ from ips_report import (
 # ── Global CSS (dark / light themes) ──────────────────────────────────────
 _THEME = st.session_state.get("theme", "dark")
 st.session_state.setdefault("mode_key", "pos_decline")
+st.session_state.setdefault("snap_page", False)
 
 _PALETTES = {
     "dark": {
@@ -584,6 +585,17 @@ with h2:
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Page Navigation ──────────────────────────────────────────────────────────
+st.markdown(
+    '<div class="page-nav">', unsafe_allow_html=True)
+n1, n2 = st.columns([1, 1])
+with n1:
+    if st.button("Merged Reports", key="nav_merger", use_container_width=True):
+        st.session_state.snap_page = False
+with n2:
+    if st.button("Transaction Snapshot", key="nav_snapshot", use_container_width=True):
+        st.session_state.snap_page = True
+st.markdown("</div>", unsafe_allow_html=True)
+
 st.markdown(
     '<div class="page-nav">', unsafe_allow_html=True)
 n1, n2 = st.columns([1, 1])

@@ -1,6 +1,7 @@
 """Report Merger + Digital Transaction Value Snapshot -- Streamlit version."""
 
 import gc
+import time
 import html as html_lib
 import io
 from datetime import date as _date
@@ -571,17 +572,13 @@ h1, h2 = st.columns([5, 1])
 with h1:
     st.markdown('<p class="gradient-title">Report Merger</p>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Consolidate POS, ATM, IPS, QR &amp; P2P transaction reports &mdash; in memory, nothing saved to disk.</p>', unsafe_allow_html=True)
+st.session_state.setdefault("theme", "dark")
+
 with h2:
     st.markdown('<div class="theme-toggle">', unsafe_allow_html=True)
-    theme_is_dark = st.session_state.get("theme", "dark") == "dark"
-    toggle_dark = st.toggle(
-        "Dark mode",
-        value=theme_is_dark,
-        key="theme_toggle",
-        help="Switch between dark and light theme",
-    )
-    if toggle_dark != theme_is_dark:
-        st.session_state.theme = "dark" if toggle_dark else "light"
+    st.toggle("Dark mode", key="theme_toggle")
+    if st.session_state.theme_toggle is not None:
+        st.session_state.theme = "dark" if st.session_state.theme_toggle else "light"
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -920,6 +917,16 @@ if mode_key == "ips":
             )
         st.markdown('</div>', unsafe_allow_html=True)
 
+        total_ips_mb = sum(f.size for f in ips_files) / (1024 * 1024)
+        if total_ips_mb > 800:
+            st.error(f"The combined IPS files are {total_ips_mb:.1f} MB – exceeds the 800 MB limit.")
+            st.stop()
+        elif total_ips_mb > 600:
+            st.warning(
+                f"IPS files are {total_ips_mb:.1f} MB. The in‑memory parser may take a few seconds "
+                f"and could appear to ‘crash’. Please wait for the progress bar."
+            )
+
         if st.button("Analyse Reports & Pick Dates", use_container_width=True, key="ips_analyze"):
             with st.spinner("Scanning every sheet for transaction dates..."):
                 try:
@@ -1047,6 +1054,19 @@ if mode_key != "ips":
         size_kb = f.size / 1024
         label = f"{size_kb:.0f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
         st.markdown(f'<div class="sheet-item"><div class="sheet-num">{len(uploaded_files)}</div><span class="sheet-name">{f.name}</span><span class="sheet-rows">{label}</span></div>', unsafe_allow_html=True)
+
+    # ── Upload‑progress widget ─────────────────────────────────────────────
+    prog_placeholder = st.empty()
+    total_bytes = sum(f.size for f in uploaded_files)
+    start_time = time.time()
+    avg_speed_mbps = 10.0  # MB/s rough estimate
+    elapsed = time.time() - start_time
+    percent = min(100, (elapsed * avg_speed_mbps / (total_bytes / 1_000_000)) * 100) if total_bytes else 0
+    seconds_left = (total_bytes / (avg_speed_mbps * 1_000_000) - elapsed) if total_bytes else 0
+    prog_placeholder.progress(max(0, min(100, percent)))
+    prog_placeholder.caption(
+        f"Upload progress: {percent:5.1f}% • estimated {seconds_left:6.1f}s left"
+    )
 
     st.markdown('</div>', unsafe_allow_html=True)
 

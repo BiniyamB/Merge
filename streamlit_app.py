@@ -596,17 +596,6 @@ with n2:
         st.session_state.snap_page = True
 st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown(
-    '<div class="page-nav">', unsafe_allow_html=True)
-n1, n2 = st.columns([1, 1])
-with n1:
-    if st.button("Merged Reports", key="nav_merger", use_container_width=True):
-        st.session_state.snap_page = False
-with n2:
-    if st.button("Transaction Snapshot", key="nav_snapshot", use_container_width=True):
-        st.session_state.snap_page = True
-st.markdown("</div>", unsafe_allow_html=True)
-
 if st.session_state.snap_page:
     _render_snapshot_page()
     st.stop()

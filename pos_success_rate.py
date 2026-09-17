@@ -86,22 +86,28 @@ def get_rate_style(rate: float) -> tuple[PatternFill, Font]:
     """Return PatternFill and Font according to Success Rate % tier rules matching POS SUCCESS RATE template:
     - 97% - 100%: Green (#00B050)
     - 86% - 96%: Yellow (#FFFF00)
-    - <= 85%: Red (#FF0000)
+    - 79% - 85%: Light Yellow (#FFF2CC)
+    - <= 78%: Red (#FF0000)
     """
     if rate >= 0.97:
         return (
             PatternFill(start_color="00B050", end_color="00B050", fill_type="solid"),
-            Font(name="Arial", size=10, bold=True, color="000000"),
+            Font(name="Calibri", size=11, bold=True, color="000000"),
         )
     elif rate >= 0.86:
         return (
             PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid"),
-            Font(name="Arial", size=10, bold=True, color="000000"),
+            Font(name="Calibri", size=11, bold=True, color="000000"),
+        )
+    elif rate >= 0.79:
+        return (
+            PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"),
+            Font(name="Calibri", size=11, bold=True, color="000000"),
         )
     else:
         return (
             PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid"),
-            Font(name="Arial", size=10, bold=True, color="FFFFFF"),
+            Font(name="Calibri", size=11, bold=True, color="FFFFFF"),
         )
 
 
@@ -471,11 +477,11 @@ def build_pos_success_rate_excel(matrix_df: pd.DataFrame, desc_df: pd.DataFrame,
             tot_cell.number_format = "#,##0"
             tot_cell.font = bold_font
         elif label == "total succ":
-            tot_cell.value = f"={tot_col_let}{r_succ_pos}+{tot_col_let}{r_ch_dec}"
+            tot_cell.value = f"=SUM(B{r_tot_succ}:{last_bank_let}{r_tot_succ})"
             tot_cell.number_format = "#,##0"
             tot_cell.font = bold_font
         elif label == "total pos t":
-            tot_cell.value = f"={tot_col_let}{r_tot_dec}+{tot_col_let}{r_succ_pos}"
+            tot_cell.value = f"=SUM(B{r_tot_pos}:{last_bank_let}{r_tot_pos})"
             tot_cell.number_format = "#,##0"
             tot_cell.font = bold_font
         elif label == "success rate":

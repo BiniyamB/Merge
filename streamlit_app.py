@@ -1426,10 +1426,10 @@ if meta["mode_key"] in ("pos", "pos_decline", "pos_success"):
     st.markdown(
         '<div style="font-size:0.78rem;color:#a0aec0;margin-bottom:12px;">'
         '<b>Success Rate Color Fills:</b> '
-        '<span style="background:#C6EFCE;color:#006100;padding:2px 8px;border-radius:4px;font-weight:700;">🟩 97%–100% Green</span> &nbsp;'
-        '<span style="background:#FFEB9C;color:#9C6500;padding:2px 8px;border-radius:4px;font-weight:700;">🟨 86%–96% Yellow</span> &nbsp;'
-        '<span style="background:#FFF2CC;color:#7F6000;padding:2px 8px;border-radius:4px;font-weight:700;">🟧 79%–85% L. Yellow</span> &nbsp;'
-        '<span style="background:#FFC7CE;color:#9C0006;padding:2px 8px;border-radius:4px;font-weight:700;">🟥 &le;78% Red</span>'
+        '<span style="background:#00B050;color:#000000;padding:2px 8px;border-radius:4px;font-weight:700;">🟩 97%–100% Green</span> &nbsp;'
+        '<span style="background:#FFFF00;color:#000000;padding:2px 8px;border-radius:4px;font-weight:700;">🟨 86%–96% Yellow</span> &nbsp;'
+        '<span style="background:#FFF2CC;color:#000000;padding:2px 8px;border-radius:4px;font-weight:700;">🟧 79%–85% L. Yellow</span> &nbsp;'
+        '<span style="background:#FF0000;color:#FFFFFF;padding:2px 8px;border-radius:4px;font-weight:700;">🟥 &le;78% Red</span>'
         '</div>',
         unsafe_allow_html=True,
     )

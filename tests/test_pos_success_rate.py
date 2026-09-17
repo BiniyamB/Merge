@@ -141,6 +141,7 @@ def test_build_pos_success_rate_excel():
 
     # Check Total Column (Col C / Col 3) formulas
     assert str(ws.cell(row=tot_dec_row, column=3).value).startswith("=SUM(")
+    assert str(ws.cell(row=tot_succ_row, column=3).value).startswith("=SUM(")
     tot_rate_formula = str(ws.cell(row=succ_rate_row, column=3).value)
     assert tot_rate_formula.startswith("=C")
 

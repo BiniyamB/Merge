@@ -576,12 +576,13 @@ with h1:
     st.markdown('<p class="subtitle">Consolidate POS, ATM, IPS, QR &amp; P2P transaction reports &mdash; in memory, nothing saved to disk.</p>', unsafe_allow_html=True)
 st.session_state.setdefault("theme", "dark")
 
+def _handle_theme_change():
+    st.session_state.theme = "dark" if st.session_state.theme_toggle else "light"
+
 with h2:
     st.markdown('<div class="theme-toggle">', unsafe_allow_html=True)
-    st.toggle("Dark mode", key="theme_toggle")
-    if st.session_state.theme_toggle is not None:
-        st.session_state.theme = "dark" if st.session_state.theme_toggle else "light"
-        st.rerun()
+    is_dark = st.session_state.get("theme", "dark") == "dark"
+    st.toggle("Dark mode", value=is_dark, key="theme_toggle", on_change=_handle_theme_change)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Page Navigation ──────────────────────────────────────────────────────────

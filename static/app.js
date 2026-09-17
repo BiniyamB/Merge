@@ -1,6 +1,6 @@
 "use strict";
 
-const state = { mode: null, files: [], result: null, chart: null };
+const state = { mode: null, files: [], result: null, chart: null, ipsToken: null, ipsDates: [] };
 
 const $ = (id) => document.getElementById(id);
 
@@ -119,6 +119,11 @@ const MODE_INFO = {
     subtitle: "Drop one or more <code>.xls</code> / <code>.xlsx</code> ATM transaction reports, or click to browse.",
     columns: ["ACQUIRER","ISSUER","CARD_NUMBER","TRANS_DATE","TRANS_TIME","TRANS_TYPE","AMOUNT","CURRENCY","RESP","RRN","UTRNNO","TERMINAL_ID","ADDRESS_NAME"],
   },
+  ips: {
+    label: "IPS",
+    subtitle: "Drop one or more raw IPS transaction exports (<code>.xls</code> / <code>.xlsx</code>). Every sheet is scanned for dates, then you choose which dates to include.",
+    columns: ["DESTINATION_BANK","SOURCE_BANK","TRX_DATE","DBTR_ACCT","CDTR_ACCT","AMOUNT","TX_ID","STATUS"],
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -151,12 +156,15 @@ function resetToPicker() {
   state.mode = null;
   state.files = [];
   state.result = null;
+  state.ipsToken = null;
+  state.ipsDates = [];
   renderFileList();
   setBreadcrumbs([]);
   errorBanner.classList.add("hidden");
   $("warn-banner").classList.add("hidden");
   $("results-card").classList.add("hidden");
   $("upload-card").classList.add("hidden");
+  $("ips-dates-card").classList.add("hidden");
   $("mode-chip").classList.add("hidden");
   $("mode-card").classList.remove("hidden");
 }
@@ -181,17 +189,23 @@ function selectMode(mode) {
   state.mode = mode;
   state.files = [];
   state.result = null;
+  state.ipsToken = null;
+  state.ipsDates = [];
   renderFileList();
   populateSortColumns(mode);
   setBreadcrumbs([MODE_INFO[mode].label]);
   errorBanner.classList.add("hidden");
   $("warn-banner").classList.add("hidden");
   $("results-card").classList.add("hidden");
+  $("ips-dates-card").classList.add("hidden");
   $("mode-card").classList.add("hidden");
   $("upload-card").classList.remove("hidden");
   $("mode-chip").classList.remove("hidden");
   $("mode-chip-label").textContent = MODE_INFO[mode].label;
   $("upload-subtitle").innerHTML = MODE_INFO[mode].subtitle;
+  $("sort-row").classList.toggle("hidden", mode === "ips");
+  mergeBtn.querySelector(".btn-label").textContent =
+    mode === "ips" ? "Analyse & pick dates" : "Merge reports";
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -299,7 +313,11 @@ mergeBtn.addEventListener("click", merge);
 
 async function merge() {
   if (state.files.length === 0 || !state.mode) return;
+  if (state.mode === "ips") return analyzeIps();
+  return mergeStandard();
+}
 
+async function mergeStandard() {
   mergeBtn.disabled = true;
   mergeBtn.querySelector(".btn-label").textContent = "Merging";
   const spinner = document.createElement("span");
@@ -331,6 +349,120 @@ async function merge() {
     mergeBtn.querySelector(".btn-label").textContent = "Merge reports";
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* IPS: analyse -> choose dates -> build                                */
+/* ------------------------------------------------------------------ */
+async function analyzeIps() {
+  mergeBtn.disabled = true;
+  mergeBtn.querySelector(".btn-label").textContent = "Scanning sheets";
+  const spinner = document.createElement("span");
+  spinner.className = "spinner";
+  mergeBtn.appendChild(spinner);
+  errorBanner.classList.add("hidden");
+
+  const formData = new FormData();
+  state.files.forEach((f) => formData.append("files", f, f.name));
+
+  try {
+    const res = await fetch("/ips-analyze", { method: "POST", body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Analysis failed.");
+    state.ipsToken = data.token;
+    state.ipsDates = data.dates || [];
+    renderIpsDates(data);
+    setBreadcrumbs([MODE_INFO[state.mode].label, "Choose dates"]);
+    $("ips-dates-card").classList.remove("hidden");
+    $("ips-dates-card").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    showError(err.message || "Something went wrong while analysing the file(s).");
+  } finally {
+    spinner.remove();
+    mergeBtn.disabled = state.files.length === 0;
+    mergeBtn.querySelector(".btn-label").textContent = "Analyse & pick dates";
+  }
+}
+
+function renderIpsDates(data) {
+  const list = $("ips-dates-list");
+  list.innerHTML = "";
+  $("ips-dates-subtitle").textContent =
+    `${(data.dates || []).length} date(s) found across all sheets · ` +
+    `${data.total_rows.toLocaleString()} transactions total`;
+
+  for (const d of data.dates) {
+    const label = document.createElement("label");
+    label.className = "ips-date-option";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = d.key;
+    cb.checked = true;
+    cb.addEventListener("change", updateIpsBuildBtn);
+    const text = document.createElement("span");
+    text.className = "ips-date-text";
+    text.innerHTML = `<strong>${d.label}</strong> <span class="muted small">· ${d.count.toLocaleString()} transactions</span>`;
+    label.append(cb, text);
+    list.appendChild(label);
+  }
+  const warn = $("warn-banner");
+  if (data.warnings && data.warnings.length) {
+    renderWarnings(data.warnings);
+  } else {
+    warn.classList.add("hidden");
+  }
+  updateIpsBuildBtn();
+}
+
+function updateIpsBuildBtn() {
+  const boxes = document.querySelectorAll("#ips-dates-list input[type=checkbox]");
+  const checked = Array.from(boxes).filter((b) => b.checked);
+  const btn = $("ips-build-btn");
+  if (btn) {
+    btn.disabled = checked.length === 0;
+    const label = btn.querySelector(".btn-label");
+    if (label) {
+      label.textContent = checked.length
+        ? `Build IPS report (${checked.length} date${checked.length > 1 ? "s" : ""})`
+        : "Build IPS report";
+    }
+  }
+}
+
+$("ips-build-btn").addEventListener("click", async () => {
+  if (!state.ipsToken) return;
+  const keys = Array.from(
+    document.querySelectorAll("#ips-dates-list input[type=checkbox]:checked")
+  ).map((b) => b.value);
+  if (!keys.length) return;
+
+  const btn = $("ips-build-btn");
+  btn.disabled = true;
+  btn.querySelector(".btn-label").textContent = "Building";
+  const spinner = document.createElement("span");
+  spinner.className = "spinner";
+  btn.appendChild(spinner);
+
+  try {
+    const formData = new FormData();
+    formData.append("token", state.ipsToken);
+    formData.append("dates", JSON.stringify(keys));
+    const res = await fetch("/ips-merge", { method: "POST", body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Build failed.");
+    state.result = data;
+    renderResults(data);
+    setBreadcrumbs([MODE_INFO[state.mode].label, "Merged report"]);
+    $("ips-dates-card").classList.add("hidden");
+    $("results-card").classList.remove("hidden");
+    $("results-card").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    showError(err.message || "Something went wrong while building the report.");
+  } finally {
+    spinner.remove();
+    btn.disabled = false;
+    updateIpsBuildBtn();
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /* Results rendering                                                    */

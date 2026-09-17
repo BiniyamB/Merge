@@ -329,11 +329,88 @@ ATM_MODE = ReportMode(
     always_show_range=True,
 )
 
+# ---------------------------------------------------------------------------
+# IPS transactions mode.
+#
+# Raw IPS (P2P) transaction export. The 8 columns come from the SQL used to
+# generate "SEPT 06-16,2026, IPS transactions": Destination_Bank (tft.name),
+# Source_bank (tff.name), TRX_DATE (t.created_date), DBTR_ACCT
+# (t.DBTR_ACCT_ID), CDTR_ACCT (t.CDTR_ACCT_ID), amount (t.amount), tx_id
+# (t.tx_id), STATUS (1=PROCESSED, 2=DECLINED, 3=RETURNED, else NA).
+#
+# TRX_DATE looks like "16-SEP-26 03.27.38.850000000 PM". These exports have NO
+# header row and the data may live in any sheet of the workbook, so IPS files
+# are parsed by `ips_report.parse_ips_report` (which scans every sheet) - never
+# through the merge/duplicate-detection pipeline.
+# ---------------------------------------------------------------------------
+IPS_CANONICAL_COLUMNS = (
+    "DESTINATION_BANK",
+    "SOURCE_BANK",
+    "TRX_DATE",
+    "DBTR_ACCT",
+    "CDTR_ACCT",
+    "AMOUNT",
+    "TX_ID",
+    "STATUS",
+)
+
+IPS_HEADER_ALIASES = {
+    "DESTINATION_BANK": "DESTINATION_BANK",
+    "DESTINATIONBANK": "DESTINATION_BANK",
+    "DESTBANK": "DESTINATION_BANK",
+    "SOURCE_BANK": "SOURCE_BANK",
+    "SOURCEBANK": "SOURCE_BANK",
+    "SRCBANK": "SOURCE_BANK",
+    "TRX_DATE": "TRX_DATE",
+    "TRXDATE": "TRX_DATE",
+    "TX_DATE": "TRX_DATE",
+    "TXDATE": "TRX_DATE",
+    "CREATED_DATE": "TRX_DATE",
+    "CREATEDDATE": "TRX_DATE",
+    "DBTR_ACCT": "DBTR_ACCT",
+    "DBTR_ACCT_ID": "DBTR_ACCT",
+    "DBTRACCT": "DBTR_ACCT",
+    "CDTR_ACCT": "CDTR_ACCT",
+    "CDTR_ACCT_ID": "CDTR_ACCT",
+    "CDTRACCT": "CDTR_ACCT",
+    "AMOUNT": "AMOUNT",
+    "AMT": "AMOUNT",
+    "TX_ID": "TX_ID",
+    "TXID": "TX_ID",
+    "TRANSACTION_ID": "TX_ID",
+    "TRANSACTIONID": "TX_ID",
+    "STATUS": "STATUS",
+    "TX_STATUS": "STATUS",
+}
+
+IPS_MODE = ReportMode(
+    key="ips",
+    label="IPS",
+    canonical_columns=IPS_CANONICAL_COLUMNS,
+    header_aliases=IPS_HEADER_ALIASES,
+    sheet_name="Report",
+    report_title=None,
+    output_prefix="IPS_Transactions",
+    sample_label="SEPT 06-16,2026, IPS transactions",
+    title_rows=0,
+    column_widths={
+        "A": 24, "B": 20, "C": 26, "D": 20, "E": 20,
+        "F": 14, "G": 20, "H": 12,
+    },
+    numeric_fmt_cols=("DBTR_ACCT", "CDTR_ACCT", "TX_ID"),
+    resp_column="STATUS",
+    date_column="TRX_DATE",
+    time_column="TRX_DATE",
+    file_date=_atm_file_date,
+    always_show_range=True,
+)
+
 MODES = {
     "pos_decline": POS_DECLINE_MODE,
     "pos_success": POS_SUCCESS_MODE,
     "pos": POS_MODE,
     "atm": ATM_MODE,
+    "ips": IPS_MODE,
 }
 
 # Canonical column names that are EXCLUDED from the duplicate-row fingerprint

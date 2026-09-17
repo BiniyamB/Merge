@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 import pandas as pd
 
 st.set_page_config(
-    page_title="Report Merger (POS, ATM & QR)",
+    page_title="Report Merger (POS, ATM, IPS, QR & P2P)",
     page_icon="",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -33,11 +33,71 @@ from interop_report import (
     build_merged_summary_excel,
     success_report_filename,
 )
+from ips_report import (
+    parse_ips_report,
+    collect_ips_dates,
+    filter_ips_by_dates,
+)
 
-# ── Global CSS ───────────────────────────────────────────────────────────────
+# ── Global CSS (dark / light themes) ──────────────────────────────────────
+_THEME = st.session_state.get("theme", "dark")
+
+_PALETTES = {
+    "dark": {
+        "BG": "linear-gradient(160deg,#050a18 0%,#0a1128 40%,#0d1a30 100%)",
+        "PANEL": "#0b1122",
+        "CARD": "rgba(255,255,255,0.035)",
+        "CARD_HOVER": "rgba(255,255,255,0.06)",
+        "BORDER": "rgba(255,255,255,0.08)",
+        "TEXT": "#e7edff",
+        "MUTED": "#8a94b8",
+        "ACCENT": "#a855f7",
+        "GRAD": "linear-gradient(135deg,#ff3cac 0%,#784ba0 40%,#2b86c5 80%,#00d4ff 100%)",
+        "SEP_BG": "rgba(10,17,40,0.95)",
+        "RADIO_C": "#c4b5fd",
+        "SHEET_BG": "rgba(168,85,247,0.06)",
+        "SHEET_BORDER": "rgba(168,85,247,0.18)",
+        "SHADOW": "0 18px 50px rgba(0,0,0,0.5)",
+    },
+    "light": {
+        "BG": "linear-gradient(160deg,#eef1f9 0%,#f7f9ff 45%,#e9efff 100%)",
+        "PANEL": "#ffffff",
+        "CARD": "rgba(255,255,255,0.82)",
+        "CARD_HOVER": "rgba(255,255,255,1)",
+        "BORDER": "rgba(24,38,78,0.12)",
+        "TEXT": "#16203c",
+        "MUTED": "#5a6a9a",
+        "ACCENT": "#7c3aed",
+        "GRAD": "linear-gradient(135deg,#d81f8b 0%,#7c3aed 45%,#1d7de0 85%,#0096c7 100%)",
+        "SEP_BG": "rgba(247,249,255,0.98)",
+        "RADIO_C": "#6d28d9",
+        "SHEET_BG": "rgba(124,58,237,0.07)",
+        "SHEET_BORDER": "rgba(124,58,237,0.25)",
+        "SHADOW": "0 18px 50px rgba(24,38,78,0.14)",
+    },
+}
+_P = _PALETTES[_THEME]
+
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0); } }
+    @keyframes glowPulse {
+        0%, 100% { filter: drop-shadow(0 0 6px rgba(168,85,247,0.35)); }
+        50%      { filter: drop-shadow(0 0 18px rgba(0,212,255,0.45)); } }
+    @keyframes floatY {
+        0%, 100% { transform: translateY(0); }
+        50%      { transform: translateY(-6px); } }
+
+    /* Override Streamlit's native theme variables so every widget follows */
+    :root {
+        --background-color: @@BG@@ !important;
+        --secondary-background-color: @@PANEL@@ !important;
+        --text-color: @@TEXT@@ !important;
+        --primary-color: @@ACCENT@@ !important;
+        --font: 'Plus Jakarta Sans', sans-serif !important;
+    }
 
     /* Hide Streamlit chrome */
     #MainMenu, footer, header[data-testid="stHeader"] {
@@ -52,93 +112,138 @@ st.markdown("""
 
     /* Base */
     .stApp {
-        background: linear-gradient(160deg, #050a18 0%, #0a1128 40%, #0d1a30 100%);
+        background: @@BG@@ !important;
         font-family: 'Plus Jakarta Sans', sans-serif; }
-    .block-container { max-width: 1100px; padding-top: 1.5rem; padding-bottom: 2rem; }
+    .block-container { max-width: 1160px; padding-top: 1.4rem; padding-bottom: 2rem; }
+    html, body, [data-testid="stAppViewContainer"] { background: transparent !important; }
 
-    /* Gradient text */
+    /* Gradient title */
     .gradient-title {
-        font-size: 2.2rem; font-weight: 800; letter-spacing: -1px;
-        background: linear-gradient(135deg, #ff3cac 0%, #784ba0 40%, #2b86c5 80%, #00d4ff 100%);
+        font-size: 2.3rem; font-weight: 800; letter-spacing: -1px;
+        background: @@GRAD@@;
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        margin-bottom: 0; }
-    .subtitle { color: #5a6a9a; font-size: 0.95rem; margin-top: -4px; }
+        background-clip: text; margin-bottom: 0;
+        animation: floatY 6s ease-in-out infinite; }
+    .subtitle { color: @@MUTED@@; font-size: 0.95rem; margin-top: -4px; }
+
+    /* Theme toggle */
+    .theme-toggle {
+        display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+        min-height: 44px; }
+    .theme-toggle span { color: @@MUTED@@; font-size: 0.75rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.6px; }
 
     /* Cards */
     .card {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 16px; padding: 24px 28px; margin-bottom: 20px;
-        backdrop-filter: blur(12px); }
+        background: @@CARD@@;
+        border: 1px solid @@BORDER@@;
+        border-radius: 18px; padding: 24px 28px; margin-bottom: 20px;
+        backdrop-filter: blur(12px);
+        box-shadow: @@SHADOW@@;
+        animation: fadeUp 0.5s ease both; }
+    .card:hover { border-color: rgba(168,85,247,0.28); }
     .card-head {
         display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
     .card-icon {
-        width: 38px; height: 38px; border-radius: 10px; display: flex;
-        align-items: center; justify-content: center; font-size: 1.1rem;
+        width: 40px; height: 40px; border-radius: 12px; display: flex;
+        align-items: center; justify-content: center; font-size: 1.15rem;
         flex-shrink: 0; }
-    .icon-blue { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.15); }
-    .icon-purple { background: rgba(168,85,247,0.1); border: 1px solid rgba(168,85,247,0.15); }
-    .icon-green { background: rgba(0,232,143,0.1); border: 1px solid rgba(0,232,143,0.15); }
-    .icon-pink { background: rgba(255,60,172,0.1); border: 1px solid rgba(255,60,172,0.15); }
-    .card-title { font-size: 1.05rem; font-weight: 700; color: #f0f4ff; margin: 0; }
-    .card-sub { font-size: 0.8rem; color: #5a6a9a; margin: 2px 0 0; }
+    .icon-blue { background: rgba(0,212,255,0.12); border: 1px solid rgba(0,212,255,0.2); }
+    .icon-purple { background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.2); }
+    .icon-green { background: rgba(0,232,143,0.12); border: 1px solid rgba(0,232,143,0.2); }
+    .icon-pink { background: rgba(255,60,172,0.12); border: 1px solid rgba(255,60,172,0.2); }
+    .icon-amber { background: rgba(251,191,36,0.14); border: 1px solid rgba(251,191,36,0.28); }
+    .card-title { font-size: 1.05rem; font-weight: 800; color: @@TEXT@@; margin: 0; }
+    .card-sub { font-size: 0.8rem; color: @@MUTED@@; margin: 2px 0 0; }
+
+    /* Mode cards (report type picker) */
+    .mode-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+        margin: 6px 0 4px; }
+    .mode-card {
+        border-radius: 16px; padding: 18px 16px 14px; text-align: center;
+        border: 1px solid @@BORDER@@; background: @@CARD@@;
+        cursor: pointer; transition: all 0.25s ease;
+        animation: fadeUp 0.5s ease both; }
+    .mode-card:hover { transform: translateY(-5px); box-shadow: @@SHADOW@@; }
+    .mode-card.mode-active {
+        border-color: @@ACCENT@@;
+        box-shadow: 0 0 0 3px rgba(168,85,247,0.18), @@SHADOW@@; }
+    .mode-card .mc-icon { font-size: 2rem; line-height: 1; display: block;
+        margin-bottom: 8px; }
+    .mode-card .mc-check {
+        position: absolute; top: 10px; right: 14px; font-size: 1rem;
+        display: none; }
+    .mode-card.mode-active .mc-check { display: block; }
+    .mode-card .mc-name { font-weight: 800; font-size: 1rem; color: @@TEXT@@; }
+    .mode-card .mc-desc { font-size: 0.72rem; color: @@MUTED@@; margin-top: 5px;
+        line-height: 1.35; }
+    .mode-card.mode-active .mc-name { color: @@ACCENT@@; }
+    .type-red     { background: linear-gradient(150deg, rgba(255,71,87,0.10), @@CARD@@ 60%); }
+    .type-green   { background: linear-gradient(150deg, rgba(0,232,143,0.10), @@CARD@@ 60%); }
+    .type-purple  { background: linear-gradient(150deg, rgba(168,85,247,0.10), @@CARD@@ 60%); }
+    .type-blue    { background: linear-gradient(150deg, rgba(0,212,255,0.10), @@CARD@@ 60%); }
+    .type-cyan    { background: linear-gradient(150deg, rgba(34,211,238,0.10), @@CARD@@ 60%); }
+    .type-amber   { background: linear-gradient(150deg, rgba(251,191,36,0.12), @@CARD@@ 60%); }
+    .type-violet  { background: linear-gradient(150deg, rgba(139,92,246,0.12), @@CARD@@ 60%); }
+    .mode-card .stButton > button { margin-top: 10px !important; }
 
     /* Metrics */
     div[data-testid="stMetric"] {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.06);
+        background: @@CARD@@;
+        border: 1px solid @@BORDER@@;
         border-radius: 14px; padding: 16px 18px;
-        transition: transform 0.2s, border-color 0.2s; }
+        transition: transform 0.2s, border-color 0.2s;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
     div[data-testid="stMetric"]:hover {
-        transform: translateY(-2px);
-        border-color: rgba(168,85,247,0.2); }
+        transform: translateY(-3px);
+        border-color: rgba(168,85,247,0.3); }
     div[data-testid="stMetric"] label {
-        color: #5a6a9a !important; font-size: 0.72rem !important;
+        color: @@MUTED@@ !important; font-size: 0.72rem !important;
         text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700 !important; }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-        color: #00d4ff !important; font-size: 1.6rem !important; font-weight: 800 !important; }
+        color: @@ACCENT@@ !important; font-size: 1.6rem !important; font-weight: 800 !important; }
 
-    /* Radio mode selector */
+    /* Radio */
     div[data-baseweb="radio"] > label {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 12px; padding: 14px 22px; margin: 0;
-        cursor: pointer; transition: all 0.25s;
-        display: flex; align-items: center; gap: 8px; }
+        background: @@CARD@@;
+        border: 1px solid @@BORDER@@;
+        border-radius: 12px; padding: 12px 20px; margin: 0;
+        cursor: pointer; transition: all 0.25s; color: @@TEXT@@; }
     div[data-baseweb="radio"] > label:hover {
-        border-color: rgba(168,85,247,0.3);
-        background: rgba(168,85,247,0.04); }
+        border-color: rgba(168,85,247,0.35); }
     div[data-baseweb="radio"] > label[data-checked="true"] {
-        border-color: rgba(168,85,247,0.4);
+        border-color: rgba(168,85,247,0.45);
         background: rgba(168,85,247,0.08); }
     div[data-baseweb="radio"] > label[data-checked="true"] > div {
-        color: #c4b5fd !important; font-weight: 700 !important; }
+        color: @@RADIO_C@@ !important; font-weight: 700 !important; }
 
     /* Buttons */
     .stButton > button {
-        background: linear-gradient(135deg, #ff3cac 0%, #784ba0 50%, #2b86c5 100%) !important;
+        background: @@GRAD@@ !important;
         color: white !important; border: none !important; border-radius: 12px !important;
         font-weight: 700 !important; font-size: 0.92rem !important;
         padding: 0.6rem 2.5rem !important;
-        box-shadow: 0 4px 20px rgba(255,60,172,0.2) !important;
+        box-shadow: 0 4px 20px rgba(168,85,247,0.25) !important;
         transition: all 0.3s !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
     .stButton > button:hover {
-        box-shadow: 0 6px 28px rgba(255,60,172,0.35) !important;
+        box-shadow: 0 6px 28px rgba(168,85,247,0.4) !important;
         transform: translateY(-2px) !important; }
     .stButton > button:active { transform: translateY(0) !important; }
 
     div[data-testid="stDownloadButton"] > button {
         background: linear-gradient(135deg, #00e88f 0%, #00b4d8 100%) !important;
-        color: #052e16 !important; border: none !important; border-radius: 12px !important;
+        color: #04221a !important; border: none !important; border-radius: 12px !important;
         font-weight: 700 !important; font-size: 0.92rem !important;
         padding: 0.6rem 2.5rem !important;
-        box-shadow: 0 4px 20px rgba(0,232,143,0.2) !important;
+        box-shadow: 0 4px 20px rgba(0,232,143,0.25) !important;
         transition: all 0.3s !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
     div[data-testid="stDownloadButton"] > button:hover {
-        box-shadow: 0 6px 28px rgba(0,232,143,0.35) !important;
+        box-shadow: 0 6px 28px rgba(0,232,143,0.4) !important;
         transform: translateY(-2px) !important; }
 
-    /* Filter download button */
+    /* Wiggle a selectbox label */
+    .stSelectbox label, .stMultiselect label, .stDateInput label { font-weight: 700 !important; }
+
     .filter-dl > button {
         background: linear-gradient(135deg, #a855f7 0%, #6366f1 50%, #3b82f6 100%) !important;
         color: white !important;
@@ -146,100 +251,138 @@ st.markdown("""
 
     /* Selectbox */
     div[data-baseweb="select"] > div {
-        background: rgba(255,255,255,0.04) !important;
-        border-color: rgba(255,255,255,0.08) !important;
-        border-radius: 10px !important; }
-    div[data-baseweb="select"]:hover > div {
-        border-color: rgba(168,85,247,0.3) !important; }
+        background: @@CARD@@ !important;
+        border-color: @@BORDER@@ !important;
+        border-radius: 10px !important; color: @@TEXT@@ !important; }
+    div[data-baseweb="select"] > div:hover { border-color: rgba(168,85,247,0.35) !important; }
     div[data-baseweb="select"] > div:focus-within {
-        border-color: #a855f7 !important;
-        box-shadow: 0 0 0 2px rgba(168,85,247,0.15) !important; }
+        border-color: @@ACCENT@@ !important;
+        box-shadow: 0 0 0 2px rgba(168,85,247,0.18) !important; }
+    div[data-baseweb="select"] [role="listbox"] { color: @@TEXT@@ !important; }
+    div[data-baseweb="popover"] > div { background: @@PANEL@@ !important; color: @@TEXT@@ !important; }
+
+    /* Multiselect */
+    div[data-baseweb="tag"] { background: rgba(168,85,247,0.16) !important;
+        border-radius: 8px !important; }
+    div[data-baseweb="tag"] span { color: @@TEXT@@ !important; }
+    ul[data-testid="stMultiselectDropdown"] { background: @@PANEL@@ !important; }
+    ul[data-testid="stMultiselectDropdown"] img { border-radius: 6px !important; }
 
     /* File uploader */
     section[data-testid="stFileUploadDropzone"] {
-        background: rgba(255,255,255,0.02) !important;
-        border: 2px dashed rgba(0,212,255,0.2) !important;
+        background: @@CARD@@ !important;
+        border: 2px dashed rgba(168,85,247,0.3) !important;
         border-radius: 16px !important; }
     section[data-testid="stFileUploadDropzone"]:hover {
-        border-color: rgba(0,212,255,0.4) !important;
-        background: rgba(0,212,255,0.02) !important; }
+        border-color: rgba(168,85,247,0.55) !important;
+        background: rgba(168,85,247,0.04) !important; }
+    section[data-testid="stFileUploadDropzone"] button {
+        background: @@GRAD@@ !important; }
+    div[data-testid="stFileUploaderDropzoneInstructions"] div { color: @@MUTED@@ !important; }
 
     /* Tables */
     .stDataFrame { border-radius: 12px !important; overflow: hidden; }
 
     /* Expanders */
     details[data-testid="stExpander"] {
-        background: rgba(255,255,255,0.02) !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
+        background: @@CARD@@ !important;
+        border: 1px solid @@BORDER@@ !important;
         border-radius: 12px !important; }
-    details[data-testid="stExpander"] summary { font-weight: 700 !important; }
+    details[data-testid="stExpander"] summary {
+        font-weight: 700 !important; color: @@TEXT@@ !important; }
 
     /* Dividers */
-    hr { border-color: rgba(255,255,255,0.05) !important; opacity: 0.5; }
+    hr { border-color: @@BORDER@@ !important; opacity: 0.5; }
 
-    /* Success / Warning / Error boxes */
+    /* Alerts */
     div[data-testid="stAlert"] { border-radius: 12px !important; }
+    div[data-testid="stAlert"] [data-testid="stAlertContainer"] { color: @@TEXT@@ !important; }
+
+    /* Toggle (theme + dedupe) */
+    div[data-testid="stToggle"] > div[role="switch"] { background: @@ACCENT@@ !important; }
+    div[data-testid="stToggle"] label p { color: @@TEXT@@ !important; font-weight: 600 !important; }
 
     /* Badges */
     .badge {
         display: inline-block; padding: 3px 10px; border-radius: 999px;
         font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
         letter-spacing: 0.5px; }
-    .badge-green { background: rgba(0,232,143,0.12); color: #00e88f; border: 1px solid rgba(0,232,143,0.25); }
-    .badge-purple { background: rgba(168,85,247,0.12); color: #c4b5fd; border: 1px solid rgba(168,85,247,0.25); }
-    .badge-red { background: rgba(255,71,87,0.12); color: #ff8a8a; border: 1px solid rgba(255,71,87,0.25); }
-    .badge-blue { background: rgba(0,212,255,0.12); color: #00d4ff; border: 1px solid rgba(0,212,255,0.25); }
+    .badge-green { background: rgba(0,232,143,0.14); color: #00e88f; border: 1px solid rgba(0,232,143,0.3); }
+    .badge-purple { background: rgba(168,85,247,0.14); color: #c4b5fd; border: 1px solid rgba(168,85,247,0.3); }
+    .badge-red { background: rgba(255,71,87,0.14); color: #ff8a8a; border: 1px solid rgba(255,71,87,0.3); }
+    .badge-blue { background: rgba(0,212,255,0.14); color: #00d4ff; border: 1px solid rgba(0,212,255,0.3); }
+    .badge-amber { background: rgba(251,191,36,0.16); color: #fbbf24; border: 1px solid rgba(251,191,36,0.34); }
 
     /* Filter sheet items */
     .sheet-item {
-        background: rgba(168,85,247,0.04);
-        border: 1px solid rgba(168,85,247,0.12);
+        background: @@SHEET_BG@@;
+        border: 1px solid @@SHEET_BORDER@@;
         border-radius: 10px; padding: 12px 16px; margin-bottom: 8px;
         display: flex; align-items: center; gap: 10px; }
     .sheet-num {
-        background: linear-gradient(135deg, #a855f7, #6366f1); color: white;
+        background: @@GRAD@@; color: white;
         width: 26px; height: 26px; border-radius: 8px; display: inline-flex;
         align-items: center; justify-content: center;
         font-size: 0.7rem; font-weight: 800; flex-shrink: 0; }
-    .sheet-name { font-weight: 700; color: #c4b5fd; }
-    .sheet-desc { color: #5a6a9a; font-size: 0.82rem; }
-    .sheet-rows { color: #5a6a9a; font-size: 0.75rem; margin-left: auto; white-space: nowrap; }
+    .sheet-name { font-weight: 700; color: @@RADIO_C@@; }
+    .sheet-desc { color: @@MUTED@@; font-size: 0.82rem; }
+    .sheet-rows { color: @@MUTED@@; font-size: 0.75rem; margin-left: auto; white-space: nowrap; }
 
     /* Sidebar */
-    section[data-testid="stSidebar"] { background: #050a18 !important; }
+    section[data-testid="stSidebar"] { background: @@PANEL@@ !important; }
 
     /* Separator with text */
-    .section-sep {
-        text-align: center; margin: 28px 0 10px; position: relative; }
+    .section-sep { text-align: center; margin: 28px 0 10px; position: relative; }
     .section-sep::before {
         content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(168,85,247,0.2), transparent); }
+        background: linear-gradient(90deg, transparent, rgba(168,85,247,0.3), transparent); }
     .section-sep span {
-        position: relative; background: rgba(10,17,40,0.95); padding: 6px 20px;
-        font-size: 0.75rem; font-weight: 700; color: #a855f7;
+        position: relative; background: @@SEP_BG@@; padding: 6px 20px;
+        font-size: 0.75rem; font-weight: 700; color: @@ACCENT@@;
         text-transform: uppercase; letter-spacing: 1px; border-radius: 999px;
-        border: 1px solid rgba(168,85,247,0.15); }
+        border: 1px solid rgba(168,85,247,0.2); }
 
     /* Page navigation tabs */
     .page-nav { display: flex; gap: 14px; margin: 4px 0 20px; }
     .page-nav .stButton > button {
-        background: rgba(255,255,255,0.05) !important;
-        border: 1px solid rgba(168,85,247,0.25) !important;
-        color: #c4b5fd !important;
+        background: @@CARD@@ !important;
+        border: 1px solid @@BORDER@@ !important;
+        color: @@TEXT@@ !important;
         box-shadow: none !important;
         border-radius: 12px !important;
         font-weight: 700 !important; }
     .page-nav .stButton > button:hover {
-        border-color: rgba(0,212,255,0.5) !important;
-        background: rgba(0,212,255,0.06) !important;
-        color: #00d4ff !important; }
+        border-color: rgba(168,85,247,0.4) !important;
+        background: rgba(168,85,247,0.06) !important;
+        color: @@ACCENT@@ !important; }
 
-    /* Snapshot editor styling */
+    /* Snapshot editor */
     div[data-testid="stDataEditor"] {
-        border: 1px solid rgba(255,255,255,0.08) !important;
+        border: 1px solid @@BORDER@@ !important;
         border-radius: 12px !important; overflow: hidden; }
+
+    /* Captions */
+    .stCaption, [data-testid="stCaptionContainer"] p { color: @@MUTED@@ !important; }
+    .info-caption { color: @@MUTED@@ !important; }
+
+    /* Date pill list (IPS mode) */
+    .date-pill {
+        display: inline-block; padding: 5px 12px; margin: 0 6px 6px 0;
+        border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+        background: rgba(251,191,36,0.14); color: #fbbf24;
+        border: 1px solid rgba(251,191,36,0.3); }
+    .date-pill-all {
+        background: rgba(0,232,143,0.14); color: #00e88f;
+        border: 1px solid rgba(0,232,143,0.3); }
 </style>
-""", unsafe_allow_html=True)
+""".replace("@@BG@@", _P["BG"]).replace("@@PANEL@@", _P["PANEL"])
+.replace("@@CARD@@", _P["CARD"]).replace("@@CARD_HOVER@@", _P["CARD_HOVER"])
+.replace("@@BORDER@@", _P["BORDER"]).replace("@@TEXT@@", _P["TEXT"])
+.replace("@@MUTED@@", _P["MUTED"]).replace("@@ACCENT@@", _P["ACCENT"])
+.replace("@@GRAD@@", _P["GRAD"]).replace("@@SEP_BG@@", _P["SEP_BG"])
+.replace("@@RADIO_C@@", _P["RADIO_C"]).replace("@@SHEET_BG@@", _P["SHEET_BG"])
+.replace("@@SHEET_BORDER@@", _P["SHEET_BORDER"]).replace("@@SHADOW@@", _P["SHADOW"]),
+    unsafe_allow_html=True)
 
 # ── State ────────────────────────────────────────────────────────────────────
 for key, default in [
@@ -250,6 +393,9 @@ for key, default in [
     ("snap_page", False),
     ("duplicate_records", []),
     ("interop_records", []),
+    ("theme", "dark"),
+    ("ips_all_records", []), ("ips_dates", []), ("ips_selected_dates", []),
+    ("ips_per_file", []), ("ips_warnings", []),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -421,8 +567,23 @@ def _render_snapshot_page():
 
 
 # ── Header ───────────────────────────────────────────────────────────────────
-st.markdown('<p class="gradient-title">Report Merger</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Consolidate POS, ATM &amp; QR transaction reports &mdash; in memory, nothing saved to disk.</p>', unsafe_allow_html=True)
+h1, h2 = st.columns([5, 1])
+with h1:
+    st.markdown('<p class="gradient-title">Report Merger</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Consolidate POS, ATM, IPS, QR &amp; P2P transaction reports &mdash; in memory, nothing saved to disk.</p>', unsafe_allow_html=True)
+with h2:
+    st.markdown('<div class="theme-toggle">', unsafe_allow_html=True)
+    theme_is_dark = st.session_state.get("theme", "dark") == "dark"
+    toggle_dark = st.toggle(
+        "Dark mode",
+        value=theme_is_dark,
+        key="theme_toggle",
+        help="Switch between dark and light theme",
+    )
+    if toggle_dark != theme_is_dark:
+        st.session_state.theme = "dark" if toggle_dark else "light"
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Page Navigation ──────────────────────────────────────────────────────────
 st.markdown(
@@ -440,33 +601,57 @@ if st.session_state.snap_page:
     _render_snapshot_page()
     st.stop()
 
-# ── Mode Selection ───────────────────────────────────────────────────────────
+# ── Mode Selection (report-type cards) ──────────────────────────────────────
 st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-purple">1</div><div><p class="card-title">Choose report type</p><p class="card-sub">Select the type of reports you want to merge</p></div></div>', unsafe_allow_html=True)
 
-mode_options = ["POS Decline", "POS Success", "POS (Daily)", "ATM (Daily)", "QR", "P2P", "Sett(Sum)"]
-mode_keys_map = {
-    "POS Decline": "pos_decline", "POS Success": "pos_success",
-    "POS (Daily)": "pos", "ATM (Daily)": "atm", "QR": "qr",
-    "P2P": "p2p", "Sett(Sum)": "sett_sum",
-}
-mode_colors = {
-    "POS Decline": "badge-red", "POS Success": "badge-green",
-    "POS (Daily)": "badge-purple", "ATM (Daily)": "badge-blue",
-    "QR": "badge-blue", "P2P": "badge-green", "Sett(Sum)": "badge-purple",
-}
+MODE_CARDS = [
+    {"key": "pos_decline", "name": "POS Decline", "icon": "📉",
+     "desc": "Declined POS transactions", "type": "type-red", "badge": "badge-red"},
+    {"key": "pos_success", "name": "POS Success", "icon": "✅",
+     "desc": "Successful POS transactions", "type": "type-green", "badge": "badge-green"},
+    {"key": "pos", "name": "POS (Daily)", "icon": "💳",
+     "desc": "SmartVista POS daily report", "type": "type-purple", "badge": "badge-purple"},
+    {"key": "atm", "name": "ATM (Daily)", "icon": "🏧",
+     "desc": "SmartVista ATM daily report", "type": "type-blue", "badge": "badge-blue"},
+    {"key": "qr", "name": "QR", "icon": "🔗",
+     "desc": "QR success bank summaries", "type": "type-cyan", "badge": "badge-blue"},
+    {"key": "p2p", "name": "P2P", "icon": "↔️",
+     "desc": "P2P success bank summaries", "type": "type-green", "badge": "badge-green"},
+    {"key": "ips", "name": "IPS", "icon": "🔁",
+     "desc": "Raw IPS transactions (all sheets)", "type": "type-amber", "badge": "badge-amber"},
+    {"key": "sett_sum", "name": "Sett(Sum)", "icon": "🧮",
+     "desc": "Settlement workbook summarised", "type": "type-violet", "badge": "badge-purple"},
+]
+mode_keys_map = {c["name"]: c["key"] for c in MODE_CARDS}
+mode_colors = {c["name"]: c["badge"] for c in MODE_CARDS}
 
-cols = st.columns(len(mode_options))
-selected = None
-for i, opt in enumerate(mode_options):
-    with cols[i]:
-        if st.button(opt, key=f"mode_{i}", use_container_width=True):
-            st.session_state.mode_key = mode_keys_map[opt]
+_active_key = st.session_state.mode_key
+card_cols = None
+for i, card in enumerate(MODE_CARDS):
+    if i % 4 == 0:
+        card_cols = st.columns(4)
+    with card_cols[i % 4]:
+        active = " mode-active" if _active_key == card["key"] else ""
+        st.markdown(
+            f'<div class="mode-card {card["type"]}{active}" data-mode="{card["key"]}">'
+            f'<span class="mc-check">✅</span>'
+            f'<span class="mc-icon">{card["icon"]}</span>'
+            f'<div class="mc-name">{card["name"]}</div>'
+            f'<div class="mc-desc">{card["desc"]}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button(f"Open {card['name']}", key=f"mode_{card['key']}", use_container_width=True):
+            st.session_state.mode_key = card["key"]
             st.session_state.merged_meta = None
             st.session_state.filter_sheets = []
             st.session_state.records = []
             st.session_state.columns = []
             st.session_state.duplicate_records = []
             st.session_state.unique_values_cache = {}
+            st.session_state.ips_all_records = []
+            st.session_state.ips_dates = []
+            st.session_state.ips_selected_dates = []
             gc.collect()
 
 if st.session_state.mode_key is None:
@@ -663,109 +848,285 @@ if mode_key in ("qr", "p2p"):
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-mode = MODES[mode_key]
+# ── IPS Transactions Report (ips mode) ──────────────────────────────────────
+def _ips_selection_meta(selected_keys):
+    """Build (records, merged_meta) for the currently selected IPS dates."""
+    all_records = st.session_state.ips_all_records
+    keys = sorted(selected_keys)
+    records = filter_ips_by_dates(all_records, keys) if keys else []
+    labels = {d["key"]: d["label"] for d in st.session_state.ips_dates}
+    from_date = keys[0] if keys else "-"
+    to_date = keys[-1] if keys else "-"
+    from_lbl = labels.get(from_date, from_date)
+    to_lbl = labels.get(to_date, to_date)
+    if from_lbl == to_lbl:
+        filename = f"IPS_Transactions_{from_lbl}_Merged.xlsx"
+    else:
+        filename = f"IPS_Transactions_{from_lbl}_to_{to_lbl}_Merged.xlsx"
+    resp_counts = {}
+    for r in records:
+        status = str(r.get("STATUS", "") or "").strip() or "(blank)"
+        resp_counts[status] = resp_counts.get(status, 0) + 1
+    resp_counts = dict(sorted(resp_counts.items(), key=lambda kv: -kv[1]))
+    meta = {
+        "filename": filename,
+        "from_date": from_date,
+        "to_date": to_date,
+        "total_rows": len(records),
+        "duplicate_count": 0,
+        "per_file": st.session_state.get("ips_per_file", []),
+        "resp_counts": resp_counts,
+        "warnings": [],
+        "mode_key": "ips",
+        "mode_label": "IPS",
+        "sort_by": "date_time",
+        "sort_dir": "asc",
+    }
+    return records, meta
 
-st.markdown(f'<span class="badge {mode_color}">{mode.label}</span>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
 
-# ── File Upload ──────────────────────────────────────────────────────────────
-st.markdown(f'<div class="card"><div class="card-head"><div class="card-icon icon-blue">2</div><div><p class="card-title">Upload {mode.label} reports</p><p class="card-sub">Drag & drop your .xls or .xlsx files</p></div></div>', unsafe_allow_html=True)
-
-uploaded_files = st.file_uploader(
-    "Upload files",
-    type=["xls", "xlsx"],
-    accept_multiple_files=True,
-    label_visibility="collapsed",
-)
-
-if not uploaded_files:
+if mode_key == "ips":
+    st.markdown(f'<span class="badge {mode_color}">IPS</span>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
 
-for f in uploaded_files:
-    size_kb = f.size / 1024
-    label = f"{size_kb:.0f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
-    st.markdown(f'<div class="sheet-item"><div class="sheet-num">{len(uploaded_files)}</div><span class="sheet-name">{f.name}</span><span class="sheet-rows">{label}</span></div>', unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# ── Merge ────────────────────────────────────────────────────────────────────
-if st.session_state.merged_meta is None:
-    total_size_mb = sum(f.size for f in uploaded_files) / (1024 * 1024)
-    if total_size_mb > 100:
-        st.warning(f"Large upload ({total_size_mb:.0f} MB total). Processing may take a while and could hit memory limits on free hosting.")
-
-    # Sort options - dates written with spelled months (Aug, Jul...) and
-    # numbers (20260813) are handled automatically by the smart sort key.
-    sort_by = st.selectbox(
-        "Sort by",
-        options=["date_time"] + list(mode.canonical_columns),
-        format_func=lambda c: "Date \u00b7 Time (default)" if c == "date_time" else c,
-        help="Choose which column to order the merged report by. Dates written with "
-             "spelled-out months (e.g. 15-Aug-26) and numbers (20260813) are sorted together.",
-    )
-    sort_dir = st.radio("Direction", ["asc", "desc"], horizontal=True,
-                        format_func=lambda d: "Ascending" if d == "asc" else "Descending")
-
-    dedupe = st.toggle(
-        "Remove duplicate rows",
-        value=False,
-        help="Keep only the first occurrence of each identical row and remove the rest. "
-             "ACQUIRER, ISSUER, TRANS_TYPE and CURRENCY are excluded from the comparison "
-             "in every report mode (POS Decline, POS Success, POS Daily, ATM) — "
-             "so two rows are duplicates when every other column (card/account number, "
-             "date, time, amount, response code, reference numbers, terminal, address) matches, "
-             "regardless of which acquirer or issuer processed them. "
-             "The 'Download Duplicates' button always shows all rows involved, even when this is off.",
+    ips_ready = (
+        st.session_state.merged_meta is not None
+        and st.session_state.merged_meta.get("mode_key") == "ips"
     )
 
-    if st.button("Merge Reports", use_container_width=True):
-        with st.spinner("Merging reports..."):
-            try:
-                payloads = [(f.name, f.getvalue()) for f in uploaded_files]
-                result = merge_reports(
-                    payloads,
-                    mode_key=mode_key,
-                    skip_workbook=True,
-                    sort_by=sort_by,
-                    sort_dir=sort_dir,
-                    dedupe=dedupe,
-                )
-            except MemoryError:
-                st.error("Not enough memory to process these files. Try uploading smaller files or fewer at a time.")
-                st.stop()
-            except ValueError as e:
-                st.error(str(e))
-                st.stop()
-            except Exception as e:
-                st.error(f"Unexpected error during merge: {e}")
+    if not ips_ready:
+        st.markdown(
+            '<div class="card"><div class="card-head"><div class="card-icon icon-amber">2</div>'
+            '<div><p class="card-title">Upload IPS transaction exports</p>'
+            '<p class="card-sub">Drag &amp; drop one or more raw IPS .xls / .xlsx exports. Every '
+            'sheet is scanned for transaction dates, then you pick which dates to include.</p>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        ips_files = st.file_uploader(
+            "Upload files", type=["xls", "xlsx"],
+            accept_multiple_files=True, label_visibility="collapsed", key="ips_files",
+        )
+        if not ips_files:
+            st.markdown('</div>', unsafe_allow_html=True)
+            st.stop()
+
+        for f in ips_files:
+            size_mb = f.size / (1024 * 1024)
+            st.markdown(
+                f'<div class="sheet-item"><span class="sheet-name">{f.name}</span>'
+                f'<span class="sheet-rows">{size_mb:.1f} MB</span></div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        if st.button("Analyse Reports & Pick Dates", use_container_width=True, key="ips_analyze"):
+            with st.spinner("Scanning every sheet for transaction dates..."):
+                try:
+                    parsed = [parse_ips_report(f.getvalue(), f.name) for f in ips_files]
+                except MemoryError:
+                    st.error("Not enough memory to process these files. Try a smaller file or fewer files at once.")
+                    st.stop()
+                except ValueError as e:
+                    st.error(str(e))
+                    st.stop()
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Unexpected error during analysis: {e}")
+                    st.stop()
+
+            all_records = [r for p in parsed for r in p["records"]]
+            dates = collect_ips_dates(parsed)
+            warnings = [f"{p['filename']}: {w}" for p in parsed for w in p["warnings"]]
+            per_file = [
+                {
+                    "filename": p["filename"], "status": "ok", "sheet": "all sheets",
+                    "raw_rows": p["rows_scanned"], "data_rows": len(p["records"]),
+                    "columns_kept": len(p["columns"]),
+                }
+                for p in parsed
+            ]
+
+            if not all_records:
+                for w in warnings:
+                    st.warning(w)
+                st.error("No IPS transaction rows were found in the uploaded file(s).")
                 st.stop()
 
-        st.session_state.records = result.records
-        st.session_state.columns = list(result.records[0].keys()) if result.records else []
+            selected_keys = [d["key"] for d in dates]
+            st.session_state.ips_all_records = all_records
+            st.session_state.ips_dates = dates
+            st.session_state.ips_per_file = per_file
+            st.session_state.ips_warnings = warnings
+            st.session_state.ips_selected_dates = selected_keys
+            st.session_state["ips_date_multiselect"] = selected_keys
+            st.session_state.columns = list(all_records[0].keys())
+            st.session_state.filter_sheets = []
+            st.session_state.pending_filters = {}
+            st.session_state.duplicate_records = []
+            st.session_state.unique_values_cache = {}
+            st.session_state.records, st.session_state.merged_meta = _ips_selection_meta(selected_keys)
+            del parsed, all_records
+            gc.collect()
+            st.rerun()
+
+        st.stop()
+
+    # Metadata ready -> show the date picker, then fall through to Results.
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-amber">3</div>'
+        '<div><p class="card-title">Choose transaction dates</p>'
+        '<p class="card-sub">Every distinct date found across <b>all sheets</b> of the uploaded '
+        'file(s). Pick one or more to include in the report.</p></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    ips_dates = st.session_state.ips_dates
+    key_to_label = {d["key"]: d["label"] for d in ips_dates}
+    key_to_count = {d["key"]: d["count"] for d in ips_dates}
+
+    if "ips_date_multiselect" not in st.session_state:
+        st.session_state["ips_date_multiselect"] = [d["key"] for d in ips_dates]
+
+    selected_dates = st.multiselect(
+        "Transaction dates",
+        options=[d["key"] for d in ips_dates],
+        format_func=lambda k: f"{key_to_label.get(k, k)}  ·  {key_to_count.get(k, 0):,} txns",
+        key="ips_date_multiselect",
+        help="Dates are read from the TRX_DATE column on every sheet of the workbook.",
+    )
+
+    if selected_dates:
+        pills = "".join(
+            f'<span class="date-pill">{key_to_label.get(k, k)} · {key_to_count.get(k, 0):,}</span>'
+            for k in selected_dates
+        )
+    else:
+        pills = ('<span class="date-pill" style="background:rgba(255,71,87,0.14);'
+                 'color:#ff8a8a;border-color:rgba(255,71,87,0.3);">No dates selected</span>')
+    st.markdown(f'<div style="margin:6px 0 10px;">{pills}</div>', unsafe_allow_html=True)
+
+    if selected_dates != st.session_state.ips_selected_dates:
+        st.session_state.ips_selected_dates = list(selected_dates)
+        st.session_state.records, st.session_state.merged_meta = _ips_selection_meta(list(selected_dates))
+        st.session_state.unique_values_cache = {}
         st.session_state.filter_sheets = []
         st.session_state.pending_filters = {}
-
-        st.session_state.merged_meta = {
-            "filename": result.filename,
-            "from_date": result.from_date,
-            "to_date": result.to_date,
-            "total_rows": result.total_rows,
-            "duplicate_count": len(result.duplicate_records),
-            "per_file": result.per_file,
-            "resp_counts": result.resp_counts,
-            "warnings": result.warnings,
-            "mode_key": result.mode_key,
-            "mode_label": result.mode_label,
-            "sort_by": result.sort_by,
-            "sort_dir": result.sort_dir,
-        }
-        st.session_state.duplicate_records = result.duplicate_records
-        del result, payloads
         gc.collect()
         st.rerun()
 
-    st.stop()
+    if st.session_state.ips_warnings:
+        with st.expander(f"Warnings ({len(st.session_state.ips_warnings)})", expanded=False):
+            for w in st.session_state.ips_warnings:
+                st.warning(w)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    # Falls through to the shared Results / Filter & Export sections below.
+
+
+if mode_key != "ips":
+    mode = MODES[mode_key]
+
+    st.markdown(f'<span class="badge {mode_color}">{mode.label}</span>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── File Upload ──────────────────────────────────────────────────────────
+    st.markdown(f'<div class="card"><div class="card-head"><div class="card-icon icon-blue">2</div><div><p class="card-title">Upload {mode.label} reports</p><p class="card-sub">Drag & drop your .xls or .xlsx files</p></div></div>', unsafe_allow_html=True)
+
+    uploaded_files = st.file_uploader(
+        "Upload files",
+        type=["xls", "xlsx"],
+        accept_multiple_files=True,
+        label_visibility="collapsed",
+    )
+
+    if not uploaded_files:
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
+    for f in uploaded_files:
+        size_kb = f.size / 1024
+        label = f"{size_kb:.0f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
+        st.markdown(f'<div class="sheet-item"><div class="sheet-num">{len(uploaded_files)}</div><span class="sheet-name">{f.name}</span><span class="sheet-rows">{label}</span></div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Merge ────────────────────────────────────────────────────────────────
+    if st.session_state.merged_meta is None:
+        total_size_mb = sum(f.size for f in uploaded_files) / (1024 * 1024)
+        if total_size_mb > 700:
+            st.warning(f"Large upload ({total_size_mb:.0f} MB total). Processing may take a while and could hit memory limits on free hosting.")
+
+        # Sort options - dates written with spelled months (Aug, Jul...) and
+        # numbers (20260813) are handled automatically by the smart sort key.
+        sort_by = st.selectbox(
+            "Sort by",
+            options=["date_time"] + list(mode.canonical_columns),
+            format_func=lambda c: "Date \u00b7 Time (default)" if c == "date_time" else c,
+            help="Choose which column to order the merged report by. Dates written with "
+                 "spelled-out months (e.g. 15-Aug-26) and numbers (20260813) are sorted together.",
+        )
+        sort_dir = st.radio("Direction", ["asc", "desc"], horizontal=True,
+                            format_func=lambda d: "Ascending" if d == "asc" else "Descending")
+
+        dedupe = st.toggle(
+            "Remove duplicate rows",
+            value=False,
+            help="Keep only the first occurrence of each identical row and remove the rest. "
+                 "ACQUIRER, ISSUER, TRANS_TYPE and CURRENCY are excluded from the comparison "
+                 "in every report mode (POS Decline, POS Success, POS Daily, ATM) — "
+                 "so two rows are duplicates when every other column (card/account number, "
+                 "date, time, amount, response code, reference numbers, terminal, address) matches, "
+                 "regardless of which acquirer or issuer processed them. "
+                 "The 'Download Duplicates' button always shows all rows involved, even when this is off.",
+        )
+
+        if st.button("Merge Reports", use_container_width=True):
+            with st.spinner("Merging reports..."):
+                try:
+                    payloads = [(f.name, f.getvalue()) for f in uploaded_files]
+                    result = merge_reports(
+                        payloads,
+                        mode_key=mode_key,
+                        skip_workbook=True,
+                        sort_by=sort_by,
+                        sort_dir=sort_dir,
+                        dedupe=dedupe,
+                    )
+                except MemoryError:
+                    st.error("Not enough memory to process these files. Try uploading smaller files or fewer at a time.")
+                    st.stop()
+                except ValueError as e:
+                    st.error(str(e))
+                    st.stop()
+                except Exception as e:
+                    st.error(f"Unexpected error during merge: {e}")
+                    st.stop()
+
+            st.session_state.records = result.records
+            st.session_state.columns = list(result.records[0].keys()) if result.records else []
+            st.session_state.filter_sheets = []
+            st.session_state.pending_filters = {}
+
+            st.session_state.merged_meta = {
+                "filename": result.filename,
+                "from_date": result.from_date,
+                "to_date": result.to_date,
+                "total_rows": result.total_rows,
+                "duplicate_count": len(result.duplicate_records),
+                "per_file": result.per_file,
+                "resp_counts": result.resp_counts,
+                "warnings": result.warnings,
+                "mode_key": result.mode_key,
+                "mode_label": result.mode_label,
+                "sort_by": result.sort_by,
+                "sort_dir": result.sort_dir,
+            }
+            st.session_state.duplicate_records = result.duplicate_records
+            del result, payloads
+            gc.collect()
+            st.rerun()
+
+        st.stop()
 
 # ── Results ──────────────────────────────────────────────────────────────────
 meta = st.session_state.merged_meta

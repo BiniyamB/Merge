@@ -13,11 +13,16 @@ from io import BytesIO
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from collections import Counter
 from merger import MODES, MergeResult, merge_reports, build_filtered_workbook, build_workbook
+from ips_report import (
+    parse_ips_report,
+    collect_ips_dates,
+    filter_ips_by_dates,
+    build_ips_workbook,
+)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 400 * 1024 * 1024  # 400 MB request cap
+app.config["MAX_CONTENT_LENGTH"] = 800 * 1024 * 1024  # 800 MB request cap
 
 # In-memory cache of generated workbooks:
 # token -> (created_at, filename, bytes, records, columns, mode_key,
@@ -25,13 +30,19 @@ app.config["MAX_CONTENT_LENGTH"] = 400 * 1024 * 1024  # 400 MB request cap
 _CACHE: dict[str, tuple[float, str, bytes, list, list, str, list]] = {}
 _CACHE_TTL_SECONDS = 30 * 60
 _MAX_FILES = 50
-_MAX_BYTES_PER_FILE = 400 * 1024 * 1024
+_MAX_BYTES_PER_FILE = 800 * 1024 * 1024
+
+# Parsed IPS records awaiting a date selection:
+# token -> {created_at, records, dates, per_file, warnings}
+_IPS_CACHE: dict[str, dict] = {}
 
 
 def _sweep_cache() -> None:
     now = time.time()
     for tok in [t for t, entry in _CACHE.items() if now - entry[0] > _CACHE_TTL_SECONDS]:
         _CACHE.pop(tok, None)
+    for tok in [t for t, e in _IPS_CACHE.items() if now - e["created_at"] > _CACHE_TTL_SECONDS]:
+        _IPS_CACHE.pop(tok, None)
 
 
 @app.get("/")
@@ -63,7 +74,7 @@ def merge():
         data = f.read()
         if len(data) > _MAX_BYTES_PER_FILE:
             return jsonify(
-                {"error": f"'{f.filename}' exceeds the 400 MB per-file size limit."}
+                {"error": f"'{f.filename}' exceeds the 800 MB per-file size limit."}
             ), 400
         payloads.append((f.filename, data))
 
@@ -121,6 +132,158 @@ def merge():
             "sort_dir": result.sort_dir,
         }
     )
+
+@app.post("/ips-analyze")
+def ips_analyze():
+    """Parse raw IPS exports and return the dates found across all sheets.
+
+    The parsed records are cached under a token so the client can then ask
+    for a merged workbook filtered to the dates it selects.
+    """
+    uploads = [f for f in request.files.getlist("files") if f and f.filename]
+    if not uploads:
+        return jsonify({"error": "No files were uploaded."}), 400
+    if len(uploads) > _MAX_FILES:
+        return jsonify({"error": f"Too many files (maximum is {_MAX_FILES})."}), 400
+
+    parsed = []
+    for f in uploads:
+        data = f.read()
+        if len(data) > _MAX_BYTES_PER_FILE:
+            return jsonify(
+                {"error": f"'{f.filename}' exceeds the 800 MB per-file size limit."}
+            ), 400
+        try:
+            parsed.append(parse_ips_report(data, f.filename))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"Failed to read '{f.filename}': {exc}"}), 400
+
+    all_records = [r for p in parsed for r in p["records"]]
+    dates = collect_ips_dates(parsed)
+    warnings = [f"{p['filename']}: {w}" for p in parsed for w in p["warnings"]]
+    per_file = [
+        {
+            "filename": p["filename"], "status": "ok", "sheet": "all sheets",
+            "raw_rows": p["rows_scanned"], "data_rows": len(p["records"]),
+            "columns_kept": len(p["columns"]),
+            "column_order": p["columns"], "order_mismatch": False,
+            "blank_columns": [], "dropped_columns": [], "extra_columns": [],
+            "warnings": p["warnings"],
+        }
+        for p in parsed
+    ]
+
+    if not all_records:
+        return jsonify({
+            "error": "No IPS transaction rows were found in the uploaded file(s).",
+            "warnings": warnings,
+        }), 400
+
+    token = uuid.uuid4().hex
+    _IPS_CACHE[token] = {
+        "created_at": time.time(),
+        "records": all_records,
+        "dates": dates,
+        "per_file": per_file,
+        "warnings": warnings,
+    }
+    _sweep_cache()
+
+    return jsonify({
+        "token": token,
+        "dates": dates,
+        "per_file": per_file,
+        "warnings": warnings,
+        "total_rows": len(all_records),
+        "columns": list(all_records[0].keys()),
+    })
+
+
+@app.post("/ips-merge")
+def ips_merge():
+    """Filter cached IPS records by the selected date(s) and build the workbook."""
+    token = request.form.get("token") or (request.get_json(silent=True) or {}).get("token")
+    if not token:
+        return jsonify({"error": "Missing token."}), 400
+
+    cached = _IPS_CACHE.get(token)
+    if cached is None:
+        return jsonify({"error": "IPS analysis expired. Please upload the file(s) again."}), 404
+
+    raw_dates = request.form.get("dates") or (request.get_json(silent=True) or {}).get("dates")
+    if isinstance(raw_dates, str):
+        text = raw_dates.strip()
+        if text.startswith("["):
+            try:
+                raw_dates = __import__("json").loads(text)
+            except Exception:
+                return jsonify({"error": "Invalid date selection."}), 400
+        else:
+            raw_dates = [d.strip() for d in text.split(",") if d.strip()]
+    if not isinstance(raw_dates, list) or not raw_dates:
+        return jsonify({"error": "Select at least one date."}), 400
+
+    labels = {d["key"]: d["label"] for d in cached["dates"]}
+    keys = sorted(str(k) for k in raw_dates)
+    records = filter_ips_by_dates(cached["records"], keys)
+
+    from_date = keys[0]
+    to_date = keys[-1]
+    from_lbl = labels.get(from_date, from_date)
+    to_lbl = labels.get(to_date, to_date)
+    if from_lbl == to_lbl:
+        filename = f"IPS_Transactions_{from_lbl}_Merged.xlsx"
+    else:
+        filename = f"IPS_Transactions_{from_lbl}_to_{to_lbl}_Merged.xlsx"
+
+    workbook_bytes = build_ips_workbook(records, from_date, to_date)
+
+    resp = {}
+    for r in records:
+        status = str(r.get("STATUS", "") or "").strip() or "(blank)"
+        resp[status] = resp.get(status, 0) + 1
+    resp = dict(sorted(resp.items(), key=lambda kv: -kv[1]))
+
+    merge_token = uuid.uuid4().hex
+    _CACHE[merge_token] = (
+        time.time(),
+        filename,
+        workbook_bytes,
+        records,
+        list(records[0].keys()) if records else [],
+        "ips",
+        [],
+    )
+    _sweep_cache()
+
+    unique_values = {}
+    if records:
+        for col in records[0].keys():
+            unique_values[col] = sorted(
+                {str(r.get(col, "")).strip() for r in records
+                 if r.get(col, "") not in ("", None)}
+            )
+
+    return jsonify({
+        "token": merge_token,
+        "filename": filename,
+        "mode": "ips",
+        "mode_label": "IPS",
+        "columns": list(records[0].keys()) if records else [],
+        "total_rows": len(records),
+        "duplicate_count": 0,
+        "from_date": from_date,
+        "to_date": to_date,
+        "per_file": cached["per_file"],
+        "preview": records[:50],
+        "unique_values": unique_values,
+        "resp_counts": resp,
+        "warnings": cached["warnings"],
+        "sort_by": "date_time",
+        "sort_dir": "asc",
+    })
 
 
 @app.get("/download/<token>")

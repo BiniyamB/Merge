@@ -407,6 +407,46 @@ code {
 .mo-qr:hover .mode-icon { box-shadow: 0 6px 28px rgba(0, 212, 255, 0.45); transform: scale(1.08); }
 .mo-qr .mode-tag { background: rgba(0, 212, 255, 0.1); color: #8be4ff; border: 1px solid rgba(0, 212, 255, 0.2); }
 
+.mo-ips .mo-glow { background: linear-gradient(135deg, rgba(255, 217, 61, 0.09), rgba(255, 140, 50, 0.05)); }
+.mo-ips:hover { border-color: rgba(255, 217, 61, 0.35); box-shadow: 0 8px 40px rgba(255, 217, 61, 0.12); }
+.mo-ips .mode-icon { background: linear-gradient(135deg, #ffd93d, #ff8c32); box-shadow: 0 4px 20px rgba(255, 217, 61, 0.3); }
+.mo-ips:hover .mode-icon { box-shadow: 0 6px 28px rgba(255, 217, 61, 0.5); transform: scale(1.08); }
+.mo-ips .mode-tag { background: rgba(255, 217, 61, 0.1); color: #ffe58a; border: 1px solid rgba(255, 217, 61, 0.25); }
+
+/* ---------- IPS date picker ---------- */
+.ips-dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.ips-date-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+  cursor: pointer;
+  transition: all 0.25s var(--ease);
+  animation: slideIn 0.3s var(--ease-bounce);
+}
+.ips-date-option:hover {
+  border-color: rgba(255, 217, 61, 0.35);
+  background: var(--glass-hover);
+  transform: translateY(-2px);
+}
+.ips-date-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #ffd93d;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ips-date-text { font-size: 0.9rem; color: var(--ink); }
+.ips-date-text strong { color: #ffd93d; }
+
 .mode-icon {
   display: grid;
   place-items: center;

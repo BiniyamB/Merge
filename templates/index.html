@@ -25,7 +25,7 @@
       </div>
       <div class="brand-text">
         <h1>Report <span class="gradient-text">Merger</span></h1>
-        <p>Consolidate POS &amp; ATM transaction reports</p>
+        <p>Consolidate POS, ATM &amp; IPS transaction reports</p>
       </div>
     </div>
     <div class="topbar-right">
@@ -132,6 +132,22 @@
             <span class="mode-tag">13 columns</span>
           </div>
         </button>
+        <button type="button" class="mode-option mo-ips" data-mode="ips">
+          <div class="mo-glow"></div>
+          <div class="mo-content">
+            <div class="mode-icon">
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="17 1 21 5 17 9"/>
+                <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                <polyline points="7 23 3 19 7 15"/>
+                <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+              </svg>
+            </div>
+            <span class="mode-name">IPS</span>
+            <span class="mode-desc">Raw IPS transactions &rarr; date picker</span>
+            <span class="mode-tag">8 columns &middot; all sheets</span>
+          </div>
+        </button>
       </div>
     </section>
 
@@ -195,6 +211,26 @@
         <button class="btn btn-merge" id="merge-btn" disabled>
           <span class="btn-shine"></span>
           <span class="btn-label">Merge reports</span>
+          <svg class="btn-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section class="card hidden" id="ips-dates-card">
+      <div class="card-head">
+        <div class="card-head-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div>
+          <h2>Choose transaction dates</h2>
+          <p class="muted" id="ips-dates-subtitle">Dates found across all sheets of the uploaded file(s).</p>
+        </div>
+      </div>
+      <div class="ips-dates" id="ips-dates-list"></div>
+      <div class="actions">
+        <button class="btn btn-merge" id="ips-build-btn" disabled>
+          <span class="btn-shine"></span>
+          <span class="btn-label">Build IPS report</span>
           <svg class="btn-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
       </div>

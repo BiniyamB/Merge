@@ -613,6 +613,8 @@ MODE_CARDS = [
      "desc": "SmartVista POS daily report", "type": "type-purple", "badge": "badge-purple"},
     {"key": "atm", "name": "ATM (Daily)", "icon": "🏧",
      "desc": "SmartVista ATM daily report", "type": "type-blue", "badge": "badge-blue"},
+    {"key": "fe_detail", "name": "FE Detail", "icon": "📇",
+     "desc": "FE detail report - unique terminals only", "type": "type-violet", "badge": "badge-purple"},
     {"key": "qr", "name": "QR", "icon": "🔗",
      "desc": "QR success bank summaries", "type": "type-cyan", "badge": "badge-blue"},
     {"key": "p2p", "name": "P2P", "icon": "↔️",

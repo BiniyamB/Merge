@@ -9,6 +9,8 @@ from merger import (
     ATM_CANONICAL_COLUMNS,
     ATM_MODE,
     CANONICAL_COLUMNS,
+    FE_DETAIL_CANONICAL_COLUMNS,
+    FE_DETAIL_MODE,
     POS_CANONICAL_COLUMNS,
     POS_MODE,
     POS_SUCCESS_CANONICAL_COLUMNS,
@@ -513,6 +515,113 @@ def test_atm_missing_column_warning():
     assert result.total_rows == 2
     assert any("no_terminal.xlsx" in w and "TERMINAL_ID" in w for w in result.warnings)
     assert any("unbalanced" in w.lower() for w in result.warnings)
+
+
+# ---------------------------------------------------------------------------
+# FE Detail mode (FE_Detail_Report format - unique terminals only)
+# ---------------------------------------------------------------------------
+def _fe_detail_style() -> bytes:
+    """Mimic 'FE_Detail_Report.xlsx': 16 columns, header in row 1. Some
+    TERMINAL_ID values appear on more than one row."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.append(list(FE_DETAIL_CANONICAL_COLUMNS))
+    ws.append(["1", "Dashen Bank", "Commercial Bank", "2026-SEP-21", "00:00:29",
+               "PAGRL134", "260921000282138580", "626421932227", "700",
+               "Cash withdrawal", "2,000.00", "0.00", "NOT_REVERSED", 915,
+               "Insufficient Funds ...", "DASHEN BANK"])
+    ws.append(["2", "Dashen Bank", "Commercial Bank", "2026-SEP-21", "00:00:53",
+               "PAGRR816", "260921000282139160", "626421932882", "700",
+               "Cash withdrawal", "500.00", "0.00", "NOT_REVERSED", 901,
+               "Invalid PIN ...", "DASHEN BANK"])
+    # same terminal as above -> must collapse to the first row
+    ws.append(["3", "Dashen Bank", "Commercial Bank", "2026-SEP-21", "00:01:30",
+               "PAGRR816", "260921000282141910", "626421933566", "700",
+               "Cash withdrawal", "500.00", "502.50", "NOT_REVERSED", -1,
+               "Approve Transaction", "DASHEN BANK"])
+    ws.append(["4", "Abyssinia Bank", "Dashen Bank", "2026-SEP-21", "00:02:37",
+               "AHW00409", "260921000282141680", "626421681423", "700",
+               "Cash withdrawal", "2,000.00", "2,010.00", "NOT_REVERSED", -1,
+               "Approve Transaction", "HOSSAENA BRANCH"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_parse_fe_detail():
+    rep = parse_report(_fe_detail_style(), "fe_detail.xlsx", mode=FE_DETAIL_MODE)
+    assert rep.data_rows == 4
+    assert rep.blank_columns == []
+    assert rep.columns_kept == list(FE_DETAIL_CANONICAL_COLUMNS)
+    assert rep.order_mismatch is False
+    row = rep.rows[0]
+    assert row["TERMINAL_ID"] == "PAGRL134"
+    assert row["ACQ_INST_NAME"] == "Dashen Bank"
+    assert row["RESP_CODE"] == 915
+    assert row["REQUESTED_AMOUNT"] == "2,000.00"  # raw formatted string kept
+    assert row["ATM_ADDRESS"] == "DASHEN BANK"
+
+
+def test_merge_fe_detail_keeps_first_row_per_terminal():
+    result = merge_reports([("fe_detail.xlsx", _fe_detail_style())], mode_key="fe_detail")
+    assert result.mode_key == "fe_detail"
+    # 4 source rows, but PAGRR816 appears twice -> only 3 unique terminals
+    assert result.total_rows == 3
+    terminals = [r["TERMINAL_ID"] for r in result.records]
+    assert len(terminals) == len(set(terminals)) == 3
+    # the FIRST row for PAGRR816 (00:00:53, RESP 901) is kept
+    page = [r for r in result.records if r["TERMINAL_ID"] == "PAGRR816"]
+    assert len(page) == 1
+    assert page[0]["RESP_CODE"] == 901
+    assert page[0]["ACTUAL_AMOUNT"] == "0.00"
+
+    # warning names the unique-terminal dedupe
+    assert any("first row per TERMINAL_ID" in w for w in result.warnings), result.warnings
+    assert result.filename == "FE_Detail_Report_2026-SEP-21_Merged.xlsx"
+
+
+def test_merge_fe_detail_unique_across_files():
+    # Uploading the same file twice still yields one row per terminal.
+    files = [
+        ("fe_detail.xlsx", _fe_detail_style()),
+        ("fe_detail_copy.xlsx", _fe_detail_style()),
+    ]
+    result = merge_reports(files, mode_key="fe_detail")
+    assert result.total_rows == 3
+    terminals = [r["TERMINAL_ID"] for r in result.records]
+    assert len(terminals) == len(set(terminals)) == 3
+
+
+def test_fe_detail_workbook_layout():
+    result = merge_reports([("fe_detail.xlsx", _fe_detail_style())], mode_key="fe_detail")
+    wb = load_workbook(io.BytesIO(result.workbook_bytes))
+    assert wb.sheetnames == ["Report"]
+    ws = wb["Report"]
+    header = [ws.cell(row=1, column=c).value
+              for c in range(1, len(FE_DETAIL_CANONICAL_COLUMNS) + 1)]
+    assert header == list(FE_DETAIL_CANONICAL_COLUMNS)
+    assert ws.cell(row=1, column=17).value is None  # nothing beyond col P
+    assert ws.cell(row=2, column=6).value == "PAGRL134"  # data starts row 2
+
+
+REAL_FE_DETAIL = Path(__file__).resolve().parents[1] / "FE_Detail_Report.xlsx"
+
+
+@pytest.mark.skipif(not REAL_FE_DETAIL.exists(), reason="real FE Detail file not present")
+def test_real_fe_detail_file_unique_terminals():
+    data = REAL_FE_DETAIL.read_bytes()
+    rep = parse_report(data, REAL_FE_DETAIL.name, mode=FE_DETAIL_MODE)
+    assert rep.data_rows > 0
+    assert rep.columns_kept == list(FE_DETAIL_CANONICAL_COLUMNS)
+    assert rep.blank_columns == []
+
+    result = merge_reports([(REAL_FE_DETAIL.name, data)], mode_key="fe_detail")
+    terminals = {r["TERMINAL_ID"] for r in result.records}
+    assert len(result.records) == len(terminals)
+    assert result.total_rows <= rep.data_rows
+    assert result.from_date == result.to_date == "2026-SEP-21"
+    assert any("first row per TERMINAL_ID" in w for w in result.warnings)
 
 
 # ---------------------------------------------------------------------------

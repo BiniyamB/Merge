@@ -239,6 +239,14 @@ class ReportMode:
     time_column: str
     file_date: Any             # callable: YYYYMMDD str -> filename date str
     always_show_range: bool
+    # Distinctive header cell(s) that mark a header row for this mode.
+    # Defaults to the POS-family "ACQUIRER" marker.
+    header_markers: tuple = ("ACQUIRER",)
+    # When set, the merged report keeps only the first row for each distinct
+    # value in this column (e.g. TERMINAL_ID) - rows with an empty value are
+    # always kept. Used by the FE Detail mode so a downloaded report contains
+    # unique terminals only.
+    unique_column: str | None = None
 
 
 POS_SUCCESS_MODE = ReportMode(
@@ -329,6 +337,88 @@ ATM_MODE = ReportMode(
     always_show_range=True,
 )
 
+# FE Detail mode -> FE_Detail_Report format
+# (sample file: FE_Detail_Report.xlsx) - the per-terminal front-end detail
+# report. The merged output keeps only the FIRST row for each TERMINAL_ID so
+# every terminal appears exactly once in the downloaded report.
+FE_DETAIL_CANONICAL_COLUMNS = (
+    "NO", "ACQ_INST_NAME", "ISS_INST_NAME", "TRANS_DATE", "TRANS_TIME",
+    "TERMINAL_ID", "UTRNNO", "REFNUM", "TYPE", "TYPE_NAME",
+    "REQUESTED_AMOUNT", "ACTUAL_AMOUNT", "REVERSAL", "RESP_CODE",
+    "RESP_DESC", "ATM_ADDRESS",
+)
+
+FE_DETAIL_HEADER_ALIASES = {
+    "NO": "NO",
+    "#": "NO",
+    "ACQ_INST_NAME": "ACQ_INST_NAME",
+    "ACQUIRER INST NAME": "ACQ_INST_NAME",
+    "ACQUIRER_INST_NAME": "ACQ_INST_NAME",
+    "ACQUIRER": "ACQ_INST_NAME",
+    "ISS_INST_NAME": "ISS_INST_NAME",
+    "ISSUER INST NAME": "ISS_INST_NAME",
+    "ISSUER_INST_NAME": "ISS_INST_NAME",
+    "ISSUER": "ISS_INST_NAME",
+    "TRANS_DATE": "TRANS_DATE",
+    "TRANS DATE": "TRANS_DATE",
+    "TRANSACTION DATE": "TRANS_DATE",
+    "TRAN_DATE": "TRANS_DATE",
+    "TRANS_TIME": "TRANS_TIME",
+    "TRANS TIME": "TRANS_TIME",
+    "TIME": "TRANS_TIME",
+    "TERMINAL_ID": "TERMINAL_ID",
+    "TERMINAL ID": "TERMINAL_ID",
+    "TERMINAL": "TERMINAL_ID",
+    "UTRNNO": "UTRNNO",
+    "UTRN NO": "UTRNNO",
+    "REFNUM": "REFNUM",
+    "REF NUM": "REFNUM",
+    "RETRIEVAL REFERENCE NUMBER": "REFNUM",
+    "TYPE": "TYPE",
+    "TYPE_NAME": "TYPE_NAME",
+    "TYPE NAME": "TYPE_NAME",
+    "REQUESTED_AMOUNT": "REQUESTED_AMOUNT",
+    "REQUESTED AMOUNT": "REQUESTED_AMOUNT",
+    "ACTUAL_AMOUNT": "ACTUAL_AMOUNT",
+    "ACTUAL AMOUNT": "ACTUAL_AMOUNT",
+    "REVERSAL": "REVERSAL",
+    "RESP_CODE": "RESP_CODE",
+    "RESP CODE": "RESP_CODE",
+    "RESP": "RESP_CODE",
+    "RESP_DESC": "RESP_DESC",
+    "RESP DESC": "RESP_DESC",
+    "RESPONSE DESCRIPTION": "RESP_DESC",
+    "ATM_ADDRESS": "ATM_ADDRESS",
+    "ATM ADDRESS": "ATM_ADDRESS",
+    "ADDRESS": "ATM_ADDRESS",
+    "ADDRESS_NAME": "ATM_ADDRESS",
+}
+
+FE_DETAIL_MODE = ReportMode(
+    key="fe_detail",
+    label="FE Detail",
+    canonical_columns=FE_DETAIL_CANONICAL_COLUMNS,
+    header_aliases=FE_DETAIL_HEADER_ALIASES,
+    sheet_name="Report",
+    report_title=None,
+    output_prefix="FE_Detail_Report",
+    sample_label="FE_Detail_Report",
+    title_rows=0,
+    column_widths={
+        "A": 8, "B": 18, "C": 18, "D": 12, "E": 12, "F": 14,
+        "G": 22, "H": 22, "I": 10, "J": 22, "K": 18, "L": 18,
+        "M": 14, "N": 12, "O": 30, "P": 34,
+    },
+    numeric_fmt_cols=("RESP_CODE", "UTRNNO", "REFNUM"),
+    resp_column="RESP_CODE",
+    date_column="TRANS_DATE",
+    time_column="TRANS_TIME",
+    file_date=_pos_file_date,
+    always_show_range=False,
+    header_markers=("ACQ_INST_NAME", "ACQUIRER INST NAME"),
+    unique_column="TERMINAL_ID",
+)
+
 # ---------------------------------------------------------------------------
 # IPS transactions mode.
 #
@@ -411,6 +501,7 @@ MODES = {
     "pos": POS_MODE,
     "atm": ATM_MODE,
     "ips": IPS_MODE,
+    "fe_detail": FE_DETAIL_MODE,
 }
 
 # Canonical column names that are EXCLUDED from the duplicate-row fingerprint
@@ -690,10 +781,11 @@ def _detect_engine(data: bytes) -> str:
 def _header_markers(mode: ReportMode) -> set[str]:
     """The distinctive header cell(s) that mark a header row for a mode.
 
-    POS-family reports always carry an 'ACQUIRER' header. A header row is
-    recognized when any of its cells matches one of these tokens.
+    POS-family reports always carry an 'ACQUIRER' header; the FE Detail
+    report carries an 'ACQ_INST_NAME' header. A header row is recognized
+    when any of its cells matches one of these tokens.
     """
-    return {"ACQUIRER"}
+    return set(mode.header_markers)
 
 
 def _is_header_row(row, mode: ReportMode | None = None) -> bool:
@@ -1224,6 +1316,30 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
             unique_records.append(rec)
         records = unique_records
 
+    # Unique-column modes (FE Detail): keep only the FIRST row for each
+    # distinct value in mode.unique_column (e.g. TERMINAL_ID), so a terminal
+    # appearing in many rows is represented exactly once in the downloaded
+    # report. Applied before sorting so the surviving row keeps its position;
+    # rows with an empty unique-column value are always kept because they do
+    # not identify a terminal.
+    unique_removed = 0
+    if mode.unique_column:
+        uniq_col = mode.unique_column
+        seen: set = set()
+        unique_records: list[dict] = []
+        for rec in records:
+            val = rec.get(uniq_col)
+            if _is_empty(val):
+                unique_records.append(rec)
+                continue
+            k = _fingerprint(val)
+            if k in seen:
+                unique_removed += 1
+                continue
+            seen.add(k)
+            unique_records.append(rec)
+        records = unique_records
+
     if sort_by in ("", "date_time", "date"):
         # default: sort by date (spelled months or numbers), then time
         records.sort(
@@ -1302,6 +1418,13 @@ def merge_reports(files: list[tuple[str, bytes]], mode_key: str = "pos_decline",
     else:
         date_part = mode.file_date(from_date)
     filename = f"{mode.output_prefix}_{date_part}_Merged.xlsx"
+
+    if unique_removed:
+        warnings.append(
+            f"Only the first row per {mode.unique_column} is kept: "
+            f"{unique_removed} additional row(s) removed, "
+            f"{len(records)} unique terminal row(s) remain."
+        )
 
     return MergeResult(
         filename=filename,

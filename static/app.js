@@ -119,6 +119,11 @@ const MODE_INFO = {
     subtitle: "Drop one or more <code>.xls</code> / <code>.xlsx</code> ATM transaction reports, or click to browse.",
     columns: ["ACQUIRER","ISSUER","CARD_NUMBER","TRANS_DATE","TRANS_TIME","TRANS_TYPE","AMOUNT","CURRENCY","RESP","RRN","UTRNNO","TERMINAL_ID","ADDRESS_NAME"],
   },
+  fe_detail: {
+    label: "FE Detail",
+    subtitle: "Drop one or more <code>.xls</code> / <code>.xlsx</code> FE detail reports, or click to browse. Only the first row for each terminal is kept.",
+    columns: ["NO","ACQ_INST_NAME","ISS_INST_NAME","TRANS_DATE","TRANS_TIME","TERMINAL_ID","UTRNNO","REFNUM","TYPE","TYPE_NAME","REQUESTED_AMOUNT","ACTUAL_AMOUNT","REVERSAL","RESP_CODE","RESP_DESC","ATM_ADDRESS"],
+  },
   ips: {
     label: "IPS",
     subtitle: "Drop one or more raw IPS transaction exports (<code>.xls</code> / <code>.xlsx</code>). Every sheet is scanned for dates, then you choose which dates to include.",

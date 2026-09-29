@@ -1,7 +1,9 @@
 """Report Merger + Digital Transaction Value Snapshot -- Streamlit version."""
 
 import gc
+import re
 import time
+import zipfile
 import html as html_lib
 import io
 from datetime import date as _date
@@ -9,6 +11,8 @@ from datetime import date as _date
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
+
+import daily_report as dr
 
 st.set_page_config(
     page_title="Report Merger (POS, ATM, IPS, QR & P2P)",
@@ -399,9 +403,86 @@ for key, default in [
     ("theme", "dark"),
     ("ips_all_records", []), ("ips_dates", []), ("ips_selected_dates", []),
     ("ips_per_file", []), ("ips_warnings", []),
+    ("daily_workbook", None), ("daily_footers", {}), ("daily_result", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
+
+# ── Daily compiled report helpers ───────────────────────────────────────────
+def _valid_day(year: int, month: int, day: int) -> bool:
+    try:
+        _date(year, month, day)
+    except ValueError:
+        return False
+    return True
+
+
+def _daily_sheet_names(workbook_bytes: bytes) -> list[str]:
+    """Every sheet name in the uploaded workbook, in tab order."""
+    with zipfile.ZipFile(io.BytesIO(workbook_bytes)) as zf:
+        book_xml = zf.read("xl/workbook.xml").decode("utf-8")
+    return re.findall(r'<sheet name="([^"]+)"', book_xml)
+
+
+def _daily_sheet_xml(workbook_bytes: bytes, sheet_name: str) -> str:
+    """The raw XML of one sheet, without going through openpyxl."""
+    with zipfile.ZipFile(io.BytesIO(workbook_bytes)) as zf:
+        book_xml = zf.read("xl/workbook.xml").decode("utf-8")
+        rels_xml = zf.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+        rid = re.search(rf'<sheet name="{re.escape(sheet_name)}"[^>]*?r:id="([^"]+)"',
+                        book_xml).group(1)
+        target = re.search(rf'Id="{re.escape(rid)}"[^>]*?Target="([^"]+)"',
+                           rels_xml).group(1)
+        return zf.read("xl/" + target.lstrip("/")).decode("utf-8")
+
+
+def _daily_footer_form(footer, month_key: str, store: dict):
+    """Ask for the footer values that no source file can provide.
+
+    They are cached per month so the user is only asked on the first day of a
+    new month, and blank entries keep the reference's "-" placeholder.
+    """
+    lines = dr.FOOTER_ROWS
+    if footer is None:
+        plans = [dr.PLAN_PLACEHOLDER] * len(lines)
+        rtp_count, rtp_value = 0.0, 0.0
+        card_note = interop_note = ""
+    else:
+        plans = list(footer.plans)
+        rtp_count, rtp_value = footer.rtp_count, footer.rtp_value
+        card_note, interop_note = footer.card_note, footer.interop_note
+
+    entered: list = []
+    cols = st.columns(min(len(lines), 4))
+    for i, spec in enumerate(lines):
+        if spec.rtp:
+            # The IPS RTP line has no plan cell: it carries a count and a value.
+            entered.append(dr.PLAN_PLACEHOLDER)
+            continue
+        with cols[i % len(cols)]:
+            current = plans[i] if i < len(plans) else dr.PLAN_PLACEHOLDER
+            if isinstance(current, (int, float)) and not isinstance(current, bool):
+                entered.append(st.number_input(f"{spec.label} plan", value=float(current),
+                                               key=f"daily_plan_{month_key}_{i}"))
+            else:
+                entered.append(st.text_input(f"{spec.label} plan", value=str(current),
+                                             key=f"daily_plan_{month_key}_{i}"))
+    r1, r2 = st.columns(2)
+    with r1:
+        count_in = st.number_input("IPS RTP transactions", value=float(rtp_count),
+                                   key=f"daily_rtp_count_{month_key}")
+        value_in = st.number_input("IPS RTP value", value=float(rtp_value),
+                                   key=f"daily_rtp_value_{month_key}")
+    with r2:
+        card_in = st.text_area("Card services note", value=card_note,
+                               key=f"daily_card_note_{month_key}")
+        interop_in = st.text_area("P2P, IPS and ETH QR note", value=interop_note,
+                                  key=f"daily_interop_note_{month_key}")
+    result = dr.MonthlyFooter(plans=entered, rtp_count=count_in, rtp_value=value_in,
+                              card_note=card_in, interop_note=interop_in)
+    store[month_key] = result
+    return result
+
 
 # ── Transaction Snapshot page ────────────────────────────────────────────────
 def _render_snapshot_page():
@@ -623,6 +704,8 @@ MODE_CARDS = [
      "desc": "Raw IPS transactions (all sheets)", "type": "type-amber", "badge": "badge-amber"},
     {"key": "sett_sum", "name": "Sett(Sum)", "icon": "🧮",
      "desc": "Settlement workbook summarised", "type": "type-violet", "badge": "badge-purple"},
+    {"key": "daily", "name": "Daily Compiled", "icon": "*",
+     "desc": "Daily financial & decline report sheet", "type": "type-blue", "badge": "badge-blue"},
 ]
 mode_keys_map = {c["name"]: c["key"] for c in MODE_CARDS}
 mode_colors = {c["name"]: c["badge"] for c in MODE_CARDS}
@@ -654,6 +737,7 @@ for i, card in enumerate(MODE_CARDS):
             st.session_state.ips_all_records = []
             st.session_state.ips_dates = []
             st.session_state.ips_selected_dates = []
+            st.session_state.daily_result = None
             gc.collect()
 
 if st.session_state.mode_key is None:
@@ -716,6 +800,160 @@ if mode_key == "sett_sum":
                 )
                 del sett_excel_bytes
                 gc.collect()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+# ── Daily compiled "Financial & Decline Transaction" report (daily mode) ────
+if mode_key == "daily":
+    st.markdown(f'<span class="badge {mode_color}">DAILY COMPILED</span>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-blue">2</div>'
+        '<div><p class="card-title">Upload the compiled workbook</p>'
+        '<p class="card-sub">The <em>September_Successful_Financial_and_Decline_Transaction_Report</em> '
+        'workbook that holds one sheet per day. The most recent day supplies the layout, the bank '
+        'names and the logos; an existing sheet for the selected date is replaced.</p></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    daily_book = st.file_uploader("Compiled workbook", type=["xlsx"],
+                                  label_visibility="collapsed", key="daily_book")
+    if daily_book is not None:
+        st.session_state.daily_workbook = daily_book.getvalue()
+    workbook_bytes = st.session_state.daily_workbook
+
+    if not workbook_bytes:
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
+    existing_sheets = _daily_sheet_names(workbook_bytes)
+
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-blue">3</div>'
+        '<div><p class="card-title">Choose the report date</p>'
+        '<p class="card-sub">The new sheet is named <code>dd.mm.yyyy</code> and placed in '
+        'chronological order.</p></div></div>',
+        unsafe_allow_html=True,
+    )
+    mc1, mc2 = st.columns(2)
+    with mc1:
+        months = sorted({dr.month_of(n) for n in existing_sheets if dr.month_of(n)},
+                        reverse=True)
+        month_labels = [f"{m:02d}.{y}" for y, m in months] or ["current"]
+        chosen_month = st.selectbox("Month", month_labels, key="daily_month")
+        if chosen_month != "current":
+            _my, _mm = (int(p) for p in chosen_month.split(".")[::-1])
+        else:
+            _mm, _my = _date.today().month, _date.today().year
+    with mc2:
+        days_of_month = [d for d in range(1, 32)
+                         if _valid_day(_my, _mm, d)]
+        # default to the first day of that month the workbook does not have yet
+        taken = {dr.sheet_date(n).day for n in existing_sheets
+                 if dr.month_of(n) == (_my, _mm) and dr.sheet_date(n)}
+        free = [d for d in days_of_month if d not in taken]
+        default_day = free[0] if free else days_of_month[-1]
+        chosen_day = st.selectbox("Day", days_of_month,
+                                  index=days_of_month.index(default_day), key="daily_day")
+    target_day = _date(_my, _mm, chosen_day)
+    sheet_name = f"{target_day:%d.%m.%Y}"
+    replacing = sheet_name in existing_sheets
+    st.caption(f"Sheet `{sheet_name}` "
+               f"{'will replace the existing sheet' if replacing else 'does not exist yet'} - "
+               f"layout donor: `{dr.pick_donor_sheet(existing_sheets, sheet_name)}`")
+
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-blue">4</div>'
+        '<div><p class="card-title">Upload the eight daily summaries</p>'
+        '<p class="card-sub">Issuer / acquirer card reports and IPS / QR bank summaries, '
+        'successful and declined.</p></div></div>',
+        unsafe_allow_html=True,
+    )
+    sources: dict[str, bytes] = {}
+    missing: list[str] = []
+    for key, label in dr.SOURCE_LABELS.items():
+        uploaded = st.file_uploader(label, type=["xlsx", "xls"],
+                                    label_visibility="collapsed", key=f"daily_src_{key}")
+        if uploaded is None:
+            missing.append(key)
+        else:
+            sources[key] = uploaded.getvalue()
+
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-blue">5</div>'
+        '<div><p class="card-title">Monthly footer values</p>'
+        '<p class="card-sub">Taken automatically from the workbook when the month already has a '
+        'sheet; otherwise fill them in once and they are reused for the rest of the month.'
+        '</p></div></div>',
+        unsafe_allow_html=True,
+    )
+    month_key = f"{_my:04d}-{_mm:02d}"
+    same_month = [n for n in existing_sheets if dr.month_of(n) == (_my, _mm)]
+    # The form is always drawn so the values stay editable, but it is only
+    # *seeded* once per month: from what the user already entered, otherwise
+    # from a sheet the workbook already has for that month.
+    seed = st.session_state.daily_footers.get(month_key)
+    if seed is None and same_month:
+        latest = max(same_month, key=lambda n: dr.sheet_date(n))
+        try:
+            with zipfile.ZipFile(io.BytesIO(workbook_bytes)) as _zf:
+                _sst_xml = _zf.read("xl/sharedStrings.xml").decode("utf-8")
+        except KeyError:
+            _sst_xml = ""
+        seed = dr.read_monthly_footer(
+            _daily_sheet_xml(workbook_bytes, latest), _sst_xml)
+        st.info(f"Monthly values for {chosen_month} were read from sheet "
+                f"`{latest}`. Change them below if needed.")
+    footer = _daily_footer_form(seed, month_key, st.session_state.daily_footers)
+
+    if missing:
+        st.warning("Still missing: " + ", ".join(dr.SOURCE_LABELS[k] for k in missing))
+
+    ready = not missing and footer is not None
+    if st.button("Build report sheet", type="primary", use_container_width=True,
+                 disabled=not ready, key="daily_build"):
+        st.session_state.daily_result = None
+        with st.spinner("Building the daily sheet..."):
+            try:
+                diagnostics = dr.Diagnostics()
+                st.session_state.daily_result = (
+                    dr.build_daily_sheet(
+                        workbook_bytes, sheet_name=sheet_name, day=target_day,
+                        sources=sources, footer=footer,
+                        donor_name=dr.pick_donor_sheet(existing_sheets, sheet_name),
+                        diagnostics=diagnostics),
+                    diagnostics, target_day)
+            except Exception as exc:  # surface the message, keep the app alive
+                st.error(f"Could not build the sheet: {exc}")
+
+    result = st.session_state.daily_result
+    if result is not None:
+        built, diagnostics, built_day = result
+        if built_day == target_day:
+            if diagnostics.ignored:
+                st.caption("Skipped as non-institutional: "
+                           + ", ".join(sorted(set(diagnostics.ignored))))
+            if diagnostics.new_banks:
+                for block, banks in diagnostics.new_banks.items():
+                    st.info(f"Appended to {block.replace('_', ' ')}: {', '.join(banks)}")
+            if diagnostics.skipped_rows:
+                st.warning("Skipped " + str(len(diagnostics.skipped_rows))
+                           + " row(s) that did not parse.")
+            if diagnostics.missing_sources:
+                st.warning("No data from: " + ", ".join(
+                    dr.SOURCE_LABELS.get(k, k) for k in diagnostics.missing_sources))
+            st.download_button(
+                "Click to save the workbook",
+                data=built,
+                file_name=f"September_Successful_Financial_and_Decline_Transaction_Report"
+                          f"_{built_day:%d}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True, key="daily_download")
+        else:
+            st.caption("The report was built for a different date - press "
+                       "“Build report sheet” to rebuild.")
 
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()

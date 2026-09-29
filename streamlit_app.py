@@ -409,6 +409,38 @@ for key, default in [
         st.session_state[key] = default
 
 # ── Daily compiled report helpers ───────────────────────────────────────────
+_MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July",
+                "August", "September", "October", "November", "December")
+
+
+def _month_range(first, last):
+    """Every ``(year, month)`` from ``first`` to ``last`` inclusive."""
+    year, month = first
+    while (year, month) <= last:
+        yield (year, month)
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+
+
+def _month_label(month_key) -> str:
+    year, month = month_key
+    return f"{_MONTH_NAMES[month - 1]} {year}"
+
+
+def _month_options(sheet_names) -> list[tuple[int, int]]:
+    """Months to offer: the workbook's own, this month, and the next one.
+
+    The next month is included so the first day of a new month can be started
+    before any sheet for it exists.
+    """
+    booked = {dr.month_of(n) for n in sheet_names if dr.month_of(n)}
+    today = _date.today()
+    following = ((today.year + 1, 1) if today.month == 12
+                 else (today.year, today.month + 1))
+    first = min([(today.year, today.month)] + list(booked))
+    last = max([following] + list(booked))
+    return list(_month_range(first, last))
+
+
 def _valid_day(year: int, month: int, day: int) -> bool:
     try:
         _date(year, month, day)
@@ -838,23 +870,35 @@ if mode_key == "daily":
         unsafe_allow_html=True,
     )
     mc1, mc2 = st.columns(2)
+    booked_months = {dr.month_of(n) for n in existing_sheets if dr.month_of(n)}
+    days_in_book = {}
+    for _n in existing_sheets:
+        _m = dr.month_of(_n)
+        if _m:
+            days_in_book[_m] = days_in_book.get(_m, 0) + 1
     with mc1:
-        months = sorted({dr.month_of(n) for n in existing_sheets if dr.month_of(n)},
-                        reverse=True)
-        month_labels = [f"{m:02d}.{y}" for y, m in months] or ["current"]
-        chosen_month = st.selectbox("Month", month_labels, key="daily_month")
-        if chosen_month != "current":
-            _my, _mm = (int(p) for p in chosen_month.split(".")[::-1])
-        else:
-            _mm, _my = _date.today().month, _date.today().year
+        month_options = _month_options(existing_sheets)
+        today_key = (_date.today().year, _date.today().month)
+        newest = max(booked_months) if booked_months else today_key
+        default_index = month_options.index(newest) if newest in month_options else 0
+        chosen_month = st.selectbox(
+            "Month", month_options, index=default_index, key="daily_month",
+            format_func=lambda m: _month_label(m) + (
+                f" ({days_in_book[m]} day(s) already)" if m in days_in_book
+                else " (new month)"))
+        _my, _mm = chosen_month
     with mc2:
         days_of_month = [d for d in range(1, 32)
                          if _valid_day(_my, _mm, d)]
-        # default to the first day of that month the workbook does not have yet
+        # default to today, or the first day this month does not have yet
         taken = {dr.sheet_date(n).day for n in existing_sheets
                  if dr.month_of(n) == (_my, _mm) and dr.sheet_date(n)}
-        free = [d for d in days_of_month if d not in taken]
-        default_day = free[0] if free else days_of_month[-1]
+        today = _date.today()
+        if (_my, _mm) == (today.year, today.month) and today.day not in taken:
+            default_day = today.day
+        else:
+            free = [d for d in days_of_month if d not in taken]
+            default_day = free[0] if free else days_of_month[-1]
         chosen_day = st.selectbox("Day", days_of_month,
                                   index=days_of_month.index(default_day), key="daily_day")
     target_day = _date(_my, _mm, chosen_day)
@@ -867,19 +911,24 @@ if mode_key == "daily":
     st.markdown(
         '<div class="card"><div class="card-head"><div class="card-icon icon-blue">4</div>'
         '<div><p class="card-title">Upload the eight daily summaries</p>'
-        '<p class="card-sub">Issuer / acquirer card reports and IPS / QR bank summaries, '
-        'successful and declined.</p></div></div>',
+        '<p class="card-sub">The file name does not matter - each upload is read by '
+        'its column headers, so any export with the columns listed below will do.'
+        '</p></div></div>',
         unsafe_allow_html=True,
     )
     sources: dict[str, bytes] = {}
     missing: list[str] = []
-    for key, label in dr.SOURCE_LABELS.items():
-        uploaded = st.file_uploader(label, type=["xlsx", "xls"],
-                                    label_visibility="collapsed", key=f"daily_src_{key}")
-        if uploaded is None:
-            missing.append(key)
-        else:
-            sources[key] = uploaded.getvalue()
+    for group_name, group_keys, group_columns in dr.SOURCE_GROUPS:
+        st.markdown(f"**{group_name}** - identified by the columns "
+                    f"`{group_columns}`")
+        for key in group_keys:
+            uploaded = st.file_uploader(
+                dr.SOURCE_REPORT_NAMES[key], type=["xlsx", "xls"],
+                key=f"daily_src_{key}")
+            if uploaded is None:
+                missing.append(key)
+            else:
+                sources[key] = uploaded.getvalue()
 
     st.markdown(
         '<div class="card"><div class="card-head"><div class="card-icon icon-blue">5</div>'
@@ -891,6 +940,10 @@ if mode_key == "daily":
     )
     month_key = f"{_my:04d}-{_mm:02d}"
     same_month = [n for n in existing_sheets if dr.month_of(n) == (_my, _mm)]
+    if not same_month:
+        st.caption(f"{_month_label((_my, _mm))} has no sheet in this workbook yet - "
+                   "set the monthly values once and they are reused for the rest "
+                   "of the month.")
     # The form is always drawn so the values stay editable, but it is only
     # *seeded* once per month: from what the user already entered, otherwise
     # from a sheet the workbook already has for that month.
@@ -909,7 +962,8 @@ if mode_key == "daily":
     footer = _daily_footer_form(seed, month_key, st.session_state.daily_footers)
 
     if missing:
-        st.warning("Still missing: " + ", ".join(dr.SOURCE_LABELS[k] for k in missing))
+        st.warning("Still missing: "
+                   + ", ".join(dr.SOURCE_REPORT_NAMES[k] for k in missing))
 
     ready = not missing and footer is not None
     if st.button("Build report sheet", type="primary", use_container_width=True,

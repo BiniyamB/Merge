@@ -39,6 +39,9 @@ SOURCE_KEYS: tuple[str, ...] = (
     "qr_decline",
 )
 
+#: What the file is usually called, kept so the regression harness and the
+#: sample data stay in step.  The screen never asks for these names: each
+#: upload is recognised by its column headers, not its file name.
 SOURCE_LABELS: dict[str, str] = {
     "iss_success": "Iss_Report Sucess.xlsx",
     "acq_success": "Acq_Report Sucess.xlsx",
@@ -49,6 +52,32 @@ SOURCE_LABELS: dict[str, str] = {
     "qr_success": "QR success for source and destination.xlsx",
     "qr_decline": "QR Declined for source and destination.xlsx",
 }
+
+#: The report each upload has to contain, in the words the screen shows.
+SOURCE_REPORT_NAMES: dict[str, str] = {
+    "iss_success": "Issuer card - successful transactions",
+    "acq_success": "Acquirer card - successful transactions",
+    "iss_decline": "Issuer card - declined transactions",
+    "acq_decline": "Acquirer card - declined transactions",
+    "ips_success": "IPS - successful interbank transfers",
+    "ips_decline": "IPS - declined interbank transfers",
+    "qr_success": "QR - successful interbank payments",
+    "qr_decline": "QR - declined interbank payments",
+}
+
+#: Grouped the way the screen presents the uploads, each with the columns that
+#: identify the report.  A file is only read as the kind of report it is if
+#: these column headers are present.
+SOURCE_GROUPS: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    ("Card reports",
+     ("iss_success", "acq_success", "iss_decline", "acq_decline"),
+     "ISS_BANKS or ACQ_BANKS, CASH_WITHDRAWAL, AMOUNT_CW, BALANCE_INQUIRY, "
+     "PURCHASE, AMOUNT_POS, STA_REQUEST, EPG, EPG-C"),
+    ("IPS and QR interbank summaries",
+     ("ips_success", "ips_decline", "qr_success", "qr_decline"),
+     "BANK_NAME, ISSUER_TXN_COUNT, ISSUER_TOTAL_AMOUNT, ACQUIRER_TXN_COUNT, "
+     "ACQUIRER_TOTAL_AMOUNT"),
+)
 
 #: Institutions that are technical noise rather than reportable banks.
 IGNORED_BANKS = {"systeminstitution"}

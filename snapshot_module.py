@@ -210,6 +210,12 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .metric-bar-fill { height: 100%; border-radius: 2px; background: #416eb4; transition: width .4s ease; }
 .highlight-row .metric-bar-fill { background: #F4511E; }
 .msg-cell { font-size: 9.5px; color: #6b7280; line-height: 1.3; }
+/* Rows that share one justification are drawn as a single part: no rule
+   between them, and the zebra striping is flattened so they match. These come
+   after the nth-child rule so they win at equal specificity. */
+.report-table tbody tr.msg-merge-top td { border-bottom: none; }
+.report-table tbody tr.msg-merge-top,
+.report-table tbody tr.msg-merge-bottom { background: transparent; }
 .msg-cell ul.msg-list { margin: 0; padding-left: 9px; list-style: disc; }
 .msg-cell ul.msg-list li { margin: 0 0 2px 0; padding-left: 1px; }
 .msg-cell ul.msg-list li:last-child { margin-bottom: 0; }
@@ -401,6 +407,54 @@ def key_message_html(text):
             + "</ul>")
 
 
+# ATM and POS acceptance are judged as one thing, so they share one
+# justification. Nothing else may borrow it: the P2P rate sits directly below
+# them and must keep its own message and its own separator.
+SHARED_MESSAGE_SERVICES = ("ATM", "POS")
+
+
+def _names_one_token_only(name, token):
+    name = (name or "").upper()
+    other = [t for t in SHARED_MESSAGE_SERVICES if t != token]
+    return token in name and not any(t in name for t in other)
+
+
+def _shares_message_with_above(above, below):
+    """True when ``below`` is the ATM/POS counterpart of the ``above`` row."""
+    if not (_is_success_rate(above) and _is_success_rate(below)):
+        return False
+    pairs = (("ATM", "POS"), ("POS", "ATM"))
+    return any(_names_one_token_only(above.get("name"), top)
+               and _names_one_token_only(below.get("name"), bottom)
+               for top, bottom in pairs)
+
+
+def merge_success_rate_groups(services):
+    """Fold the ATM and POS success-rate rows into one part of the table.
+
+    Only that pair is folded: the justification is written once on the row
+    carrying it and spans both rows, and the two are drawn without a line
+    between them. Every other row - the P2P rate included - keeps its own
+    message and its own separator.
+
+    Returns ``[(owner_index, [continuation_index, ...]), ...]`` covering all rows.
+    """
+    groups: list[tuple[int, list[int]]] = []
+    for index, service in enumerate(services):
+        above = services[index - 1] if index else None
+        is_counterpart = (
+            above is not None
+            and _shares_message_with_above(above, service)
+            and (above.get("keyMessage") or "").strip()
+            and not (service.get("keyMessage") or "").strip()
+        )
+        if is_counterpart and groups and groups[-1][0] == index - 1:
+            groups[-1][1].append(index)
+        else:
+            groups.append((index, []))
+    return groups
+
+
 def _is_success_rate(s):
     return s.get("type") == "success-rate" or "SUCCESS RATE" in (s.get("name") or "").upper()
 
@@ -546,12 +600,21 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True,
     qr = calc["qr"]
     takeaway = takeaway_override.strip() or calc["takeaway"]
 
+    groups = merge_success_rate_groups(services)
+    continuation = {i for _owner, rest in groups for i in rest}
+    rowspan_of = {owner: 1 + len(rest) for owner, rest in groups}
+
     rows = []
-    for s in services:
+    for index, s in enumerate(services):
         is_rate = s["isSuccessRate"]
         is_highest = (not is_rate) and highest_avg_name and highest_avg_name == s["name"]
         effective_h1 = s["highlighted"] or (auto_highlight and is_highest)
-        tr_class = ' class="highlight-row"' if effective_h1 else ""
+        classes = [name for name, on in (
+            ("highlight-row", effective_h1),
+            ("msg-merge-top", rowspan_of.get(index, 1) > 1),
+            ("msg-merge-bottom", index in continuation),
+        ) if on]
+        tr_class = ' class="' + " ".join(classes) + '"' if classes else ""
 
         icon_class = "financial" if (s["isFinancial"] and not is_rate) else "non-financial"
         svc = ('<td><div class="svc-cell"><div class="svc-icon ' + icon_class + ' ' + _icon_class(s["name"]) + '">'
@@ -589,8 +652,14 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True,
         badge = ""
         if is_highest:
             badge = ('<div class="msg-badge"><i data-lucide="star"></i> HIGHEST AVG VALUE</div>')
-        key_msg = ('<td class="msg-cell ' + msg + '">' + key_message_html(s["keyMessage"])
-                   + badge + "</td>")
+        if index in continuation:
+            # the row above owns the justification and it spans this row too
+            key_msg = ""
+        else:
+            span = rowspan_of.get(index, 1)
+            span_attr = ' rowspan="%d"' % span if span > 1 else ""
+            key_msg = ('<td class="msg-cell ' + msg + '"' + span_attr + '>'
+                       + key_message_html(s["keyMessage"]) + badge + "</td>")
 
         rows.append("<tr" + tr_class + ">" + svc
                     + '<td class="num-cell">' + target + "</td>"

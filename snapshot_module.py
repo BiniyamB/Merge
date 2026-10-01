@@ -7,6 +7,7 @@ module is available on the deployed Streamlit app without a Node server.
 import base64
 import html as _html
 import os
+import re
 
 import pandas as pd
 
@@ -22,10 +23,13 @@ REPORT_DEFAULTS = {
 }
 
 SERVICE_DEFAULTS = [
+    # ATM and POS success rate share one key message: it speaks for both rows,
+    # so it is written once here and the POS row carries no message of its own.
     {"name": "ATM SUCCESS RATE", "type": "success-rate", "transactionVolume": 98.7,
-     "totalValue": 0, "target": 98, "keyMessage": "ATM success rate", "highlighted": False},
+     "totalValue": 0, "target": 98,
+     "keyMessage": "ATM and POS acceptance stay above plan", "highlighted": False},
     {"name": "POS SUCCESS RATE", "type": "success-rate", "transactionVolume": 97.5,
-     "totalValue": 0, "target": 97, "keyMessage": "POS success rate", "highlighted": False},
+     "totalValue": 0, "target": 97, "keyMessage": "", "highlighted": False},
     {"name": "P2P SUCCESS RATE", "type": "success-rate", "transactionVolume": 99.1,
      "totalValue": 0, "target": 99, "keyMessage": "P2P success rate", "highlighted": False},
     {"name": "CASH WITHDRAWAL", "type": "financial", "transactionVolume": 306455,
@@ -206,6 +210,9 @@ body { margin: 0; background: #eef1f6; font-family: 'Plus Jakarta Sans', 'Segoe 
 .metric-bar-fill { height: 100%; border-radius: 2px; background: #416eb4; transition: width .4s ease; }
 .highlight-row .metric-bar-fill { background: #F4511E; }
 .msg-cell { font-size: 9.5px; color: #6b7280; line-height: 1.3; }
+.msg-cell ul.msg-list { margin: 0; padding-left: 9px; list-style: disc; }
+.msg-cell ul.msg-list li { margin: 0 0 2px 0; padding-left: 1px; }
+.msg-cell ul.msg-list li:last-child { margin-bottom: 0; }
 .msg-cell.msg-highlight { color: #F4511E; font-weight: 600; }
 .msg-badge { display: inline-block; background: #F4511E; color: #fff; font-size: 7px;
   font-weight: 700; letter-spacing: .8px; padding: 1px 6px; border-radius: 3px;
@@ -364,6 +371,34 @@ def _initials(org):
 
 def _esc(text):
     return _html.escape(str(text if text is not None else ""))
+
+
+#: A key message is a list of points.  The editor cell is single line, so points
+#: are separated by a semicolon or a newline, and a leading bullet or number the
+#: user typed is dropped because the renderer adds the bullet itself.
+_MSG_SEPARATORS = re.compile(r"[\r\n;]+")
+_MSG_BULLET = re.compile(r"^\s*(?:[-*+\u2022\u2013\u2014]+|\d+[.)])\s*")
+
+
+def key_message_points(text):
+    """The individual points of a key message, in order, blanks removed."""
+    points = [_MSG_BULLET.sub("", part.strip())
+              for part in _MSG_SEPARATORS.split(text or "")]
+    return [point for point in points if point]
+
+
+def key_message_html(text):
+    """A key message rendered as one bullet per point.
+
+    Without this the points ran together on a single line, because HTML
+    collapses the newlines.
+    """
+    points = key_message_points(text)
+    if not points:
+        return ""
+    return ('<ul class="msg-list">'
+            + "".join("<li>" + _esc(point) + "</li>" for point in points)
+            + "</ul>")
 
 
 def _is_success_rate(s):
@@ -554,7 +589,8 @@ def build_report_html(report, calc, show_bars=True, auto_highlight=True,
         badge = ""
         if is_highest:
             badge = ('<div class="msg-badge"><i data-lucide="star"></i> HIGHEST AVG VALUE</div>')
-        key_msg = ('<td class="msg-cell ' + msg + '">' + _esc(s["keyMessage"]) + badge + "</td>")
+        key_msg = ('<td class="msg-cell ' + msg + '">' + key_message_html(s["keyMessage"])
+                   + badge + "</td>")
 
         rows.append("<tr" + tr_class + ">" + svc
                     + '<td class="num-cell">' + target + "</td>"

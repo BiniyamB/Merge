@@ -575,7 +575,10 @@ def _render_snapshot_page():
                 "Performance", min_value=0.0, step=0.01, format="%.2f", width="small"),
             "totalValue": st.column_config.NumberColumn(
                 "Total Value (ETB)", min_value=0.0, step=0.01, format="%.2f", width="large"),
-            "keyMessage": st.column_config.TextColumn("Key Message", width="medium"),
+            "keyMessage": st.column_config.TextColumn(
+                "Key Message", width="medium",
+                help="One point per line in the report. Separate several points "
+                     "with a semicolon or a new line and each becomes a bullet."),
             "highlighted": st.column_config.CheckboxColumn("Highlight", width="small"),
         },
     )

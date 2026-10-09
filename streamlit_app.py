@@ -1004,8 +1004,8 @@ if mode_key == "daily":
             st.download_button(
                 "Click to save the workbook",
                 data=built,
-                file_name=f"September_Successful_Financial_and_Decline_Transaction_Report"
-                          f"_{built_day:%d}.xlsx",
+                file_name=f"{built_day:%B}_Successful_Financial_and_Decline_Transaction"
+                          f"_Report_{built_day:%d}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True, key="daily_download")
         else:

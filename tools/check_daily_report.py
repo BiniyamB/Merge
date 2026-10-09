@@ -121,6 +121,29 @@ def new_day_pass(template: bytes, sources: Mapping[str, bytes], footer) -> list[
     return problems
 
 
+def total_ratio_deviations(expected_xml: str, sst_xml: str) -> dict[str, tuple[str, str]]:
+    """What the total row's ratio cells should be, versus the reference.
+
+    The reference drags one sum across the whole total row, so its E and I add
+    the line percentages together; the sheet writes ``C/B`` and ``F/H`` of the
+    total row instead. Returns ``{ref: (value, formula)}`` for ``compare``.
+    """
+    total_row = (dr.DonorSheet.parse(expected_xml, dr.SharedStrings(sst_xml)).footer_start
+                 + 2 + len(dr.FOOTER_ROWS))
+    cells = cell_map(expected_xml, sst_xml)
+    out: dict[str, tuple[str, str]] = {}
+    for cell, numerator, denominator in dr.TOTAL_RATIO_CELLS:
+        top = float(cells[f"{numerator}{total_row}"][0])
+        bottom = float(cells[f"{denominator}{total_row}"][0])
+        ref = f"{cell}{total_row}"
+        if bottom:
+            out[ref] = (repr(top / bottom),
+                        f"{numerator}{total_row}/{denominator}{total_row}")
+        else:
+            out[ref] = ("0", "")
+    return out
+
+
 def main() -> int:
     template = BOOK.read_bytes()
     sources = {key: (FOLDER / name).read_bytes() for key, name in SOURCE_FOR_KEY.items()}
@@ -169,7 +192,8 @@ def main() -> int:
 
     exact = compare(expected_xml, got_xml, got_sst,
                     formulas_expected=formula_map(template, TARGET),
-                    formulas_got=formula_map(built, TARGET))
+                    formulas_got=formula_map(built, TARGET),
+                    deviations=total_ratio_deviations(expected_xml, sst_xml))
 
     # ── 2. cross-donor: the real workflow, 27.09.2026 supplies the layout ───
     print("\n=== pass 2: 27.09.2026 donor, data compared by bank ===")
@@ -292,12 +316,18 @@ def merges_of(xml: str) -> list[str]:
 
 
 def compare(expected: str, got: str, sst_xml: str, formulas_expected=None,
-            formulas_got=None, tol: float = 1e-6) -> bool:
+            formulas_got=None, deviations=None, tol: float = 1e-6) -> bool:
     problems: list[str] = []
-    formulas_expected = formulas_expected or {}
+    formulas_expected = dict(formulas_expected or {})
     formulas_got = formulas_got or {}
 
     exp_cells, got_cells = cell_map(expected, sst_xml), cell_map(got, sst_xml)
+    # Cells the sheet deliberately computes differently from the reference: the
+    # total row's achievement and decline rate are ratios of the totals, while
+    # the reference drags the row sum into them.
+    for ref, (value, formula) in (deviations or {}).items():
+        exp_cells[ref] = (value, formula)
+        formulas_expected[ref] = formula
     for ref in sorted(set(exp_cells) | set(got_cells),
                       key=lambda r: (int(re.search(r"\d+", r).group()),
                                      dr.col_index(r.rstrip("0123456789")))):

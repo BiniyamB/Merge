@@ -198,11 +198,27 @@ def test_regenerating_the_reference_reproduces_it(template, sources, reference_f
 
     expected, got = cell_map(expected_xml, shared_strings(template)), cell_map(got_xml, sst)
     assert set(expected) == set(got)
+
+    # The total row's achievement and decline cells are ratios of the total
+    # row's own figures, so they are the one place the rebuild reproduces the
+    # reference only in style: the reference adds the line percentages there.
+    total_row = (dr.DonorSheet.parse(expected_xml, dr.SharedStrings(shared_strings(template)))
+                 .footer_start + 2 + len(dr.FOOTER_ROWS))
+    ratio_refs = {f"{cell}{total_row}" for cell, _, _ in dr.TOTAL_RATIO_CELLS}
     for ref, (want, _f) in expected.items():
+        if ref in ratio_refs:
+            continue
         try:
             assert float(got[ref][0]) == pytest.approx(float(want))
         except (TypeError, ValueError):
             assert got[ref][0] == want
+
+    for cell, numerator, denominator in dr.TOTAL_RATIO_CELLS:
+        ref = f"{cell}{total_row}"
+        assert got[ref][1] == f"{numerator}{total_row}/{denominator}{total_row}"
+        assert float(got[ref][0]) == pytest.approx(
+            float(expected[f"{numerator}{total_row}"][0])
+            / float(expected[f"{denominator}{total_row}"][0]))
 
     assert styles_map(got_xml) == styles_map(expected_xml)
     assert merges_of(got_xml) == merges_of(expected_xml)
@@ -304,6 +320,33 @@ def test_first_day_of_a_new_month_accepts_blank_footer(template, sources):
     assert cells["A64"][0] == "Total interbank (Financial only)"
     assert cells["B64"][1] == "B57+B58+B59+B60+B62"
     assert cells["F64"][1] == "F57+F58+F59+F60+F62"
+
+
+@needs_sample
+def test_total_row_rates_are_ratios_of_the_totals(template, sources, reference_footer):
+    """The total's achievement and decline rate are C64/B64 and F64/H64.
+
+    The reference workbook drags one ``B57+B58+...`` across the whole total
+    row, so its E64 and I64 *add* the line percentages together. The sheet
+    recomputes both from the total row's own figures instead.
+    """
+    built = dr.build_daily_sheet(
+        template, sheet_name=TARGET, day=date(2026, 9, 28), sources=sources,
+        footer=reference_footer, donor_name=TARGET)
+    cells = cell_map(read_part(built, TARGET), shared_strings(built))
+    total_row = (dr.DonorSheet.parse(read_part(template, TARGET),
+                                     dr.SharedStrings(shared_strings(template)))
+                 .footer_start + 2 + len(dr.FOOTER_ROWS))
+    for cell, numerator, denominator in dr.TOTAL_RATIO_CELLS:
+        assert cells[f"{cell}{total_row}"][1] == \
+            f"{numerator}{total_row}/{denominator}{total_row}"
+        assert float(cells[f"{cell}{total_row}"][0]) == pytest.approx(
+            float(cells[f"{numerator}{total_row}"][0])
+            / float(cells[f"{denominator}{total_row}"][0]))
+    # sanity: the line percentages are not merely summed any more
+    line_sum = sum(float(cells[f"E{r}"][0]) for r in range(57, 63)
+                   if cells.get(f"E{r}", ("", ""))[0] not in ("", None))
+    assert float(cells[f"E{total_row}"][0]) != pytest.approx(line_sum)
 
 
 @needs_sample

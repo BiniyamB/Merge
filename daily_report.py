@@ -154,6 +154,17 @@ FOOTER_ROWS: tuple[FooterRow, ...] = (
 #: Footer lines aggregated by the "Total interbank" row (NPG and RTP excluded).
 FOOTER_TOTAL_INCLUDED = (0, 1, 2, 3, 5)
 
+#: Total-row cells that are ratios of the row's own figures rather than sums of
+#: the lines above, as ``(cell, numerator, denominator)``.  The achievement is
+#: the total taken over the total plan, the decline rate over the total
+#: combined.  The reference workbook drags one ``B57+B58+...`` across the whole
+#: total row, so it *adds* these two percentages together; recomputing them is
+#: the one place this sheet deliberately departs from the reference.
+TOTAL_RATIO_CELLS: tuple[tuple[str, str, str], ...] = (
+    ("E", "C", "B"),
+    ("I", "F", "H"),
+)
+
 #: What a non-numeric monthly plan looks like in the reference workbook.
 PLAN_PLACEHOLDER = "                             -  "
 
@@ -976,13 +987,26 @@ def _render_sheet(donor: DonorSheet,
     label = (donor.footer_texts.get(total_offset, {}).get("A")
              or "Total interbank (Financial only)")
     cells[1] = (total_styles.get("A", "0"), label)
-    for col, key in ((2, "B"), (3, "C"), (4, "D"), (5, "E"),
-                     (6, "F"), (7, "G"), (8, "H"), (9, "I")):
+
+    summed: dict[str, float] = {}
+    for col, key in ((2, "B"), (3, "C"), (4, "D"),
+                     (6, "F"), (7, "G"), (8, "H")):
         total = 0.0
         for i in FOOTER_TOTAL_INCLUDED:
             total += grid[i]["nums"][key]
+        summed[key] = total
         cells[col] = (total_styles.get(key, "0"),
                       Value(total, "+".join(f"{key}{n}" for n in picked)))
+
+    # The achievement and decline cells are ratios of the total row's own
+    # figures, not sums of the line percentages above them.
+    for key, numerator, denominator in TOTAL_RATIO_CELLS:
+        bottom = summed[denominator]
+        cells[col_index(key)] = (
+            total_styles.get(key, "0"),
+            Value(summed[numerator] / bottom,
+                  f"{numerator}{total_row}/{denominator}{total_row}")
+            if bottom else 0.0)
     rows_xml.append(_row_xml(total_row, donor.footer_attrs.get(total_offset, ""),
                              cells, sst))
 

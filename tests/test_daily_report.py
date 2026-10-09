@@ -112,6 +112,15 @@ def merges_of(xml: str) -> set[str]:
     return set(re.findall(r'<mergeCell ref="([A-Z]+\d+:[A-Z]+\d+)"', xml))
 
 
+def numfmt_ids(book: bytes, sheet: str) -> dict[str, str]:
+    """``cell ref -> numFmtId`` for the styled cells of ``sheet``."""
+    with zipfile.ZipFile(io.BytesIO(book)) as zf:
+        styles = zf.read("xl/styles.xml").decode("utf-8")
+    xfs = dr._cell_xfs(styles)[1]
+    return {ref: re.search(r'numFmtId="(\d+)"', xfs[int(style)]).group(1)
+            for ref, style in styles_map(read_part(book, sheet)).items()}
+
+
 # ── fixtures ────────────────────────────────────────────────────────────────
 @pytest.fixture(scope="module")
 def template() -> bytes:
@@ -220,7 +229,17 @@ def test_regenerating_the_reference_reproduces_it(template, sources, reference_f
             float(expected[f"{numerator}{total_row}"][0])
             / float(expected[f"{denominator}{total_row}"][0]))
 
-    assert styles_map(got_xml) == styles_map(expected_xml)
+    got_styles, expected_styles = styles_map(got_xml), styles_map(expected_xml)
+    for ref in sorted(set(got_styles) | set(expected_styles)):
+        if ref not in ratio_refs:
+            assert got_styles.get(ref) == expected_styles.get(ref), ref
+
+    # The ratio cells borrow the footer's percentage number format, so they are
+    # intentionally styled differently from the reference's integer total row.
+    formats = numfmt_ids(built, TARGET)
+    footer_e = f"E{total_row - len(dr.FOOTER_ROWS)}"
+    for ref in sorted(ratio_refs):
+        assert formats[ref] == formats[footer_e], ref
     assert merges_of(got_xml) == merges_of(expected_xml)
     assert re.search(r'<dimension ref="([^"]+)"', got_xml).group(1) == \
         re.search(r'<dimension ref="([^"]+)"', expected_xml).group(1)
@@ -347,6 +366,11 @@ def test_total_row_rates_are_ratios_of_the_totals(template, sources, reference_f
     line_sum = sum(float(cells[f"E{r}"][0]) for r in range(57, 63)
                    if cells.get(f"E{r}", ("", ""))[0] not in ("", None))
     assert float(cells[f"E{total_row}"][0]) != pytest.approx(line_sum)
+    # the rates must show as percentages, not rounded to the row's integers
+    formats = numfmt_ids(built, TARGET)
+    footer_e = f"E{total_row - len(dr.FOOTER_ROWS)}"
+    for cell, _, _ in dr.TOTAL_RATIO_CELLS:
+        assert formats[f"{cell}{total_row}"] == formats[footer_e]
 
 
 @needs_sample

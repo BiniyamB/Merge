@@ -144,6 +144,20 @@ def total_ratio_deviations(expected_xml: str, sst_xml: str) -> dict[str, tuple[s
     return out
 
 
+def ratio_format_problems(book: bytes, sheet_name: str,
+                          deviations: Mapping[str, tuple[str, str]]) -> list[str]:
+    """The ratio cells must show a percentage, not the total row's integers."""
+    if not deviations:
+        return []
+    wb = openpyxl.load_workbook(io.BytesIO(book))
+    try:
+        ws = wb[sheet_name]
+        return [f"{ref}: number format {ws[ref].number_format!r} is not a percentage"
+                for ref in sorted(deviations) if "%" not in ws[ref].number_format]
+    finally:
+        wb.close()
+
+
 def main() -> int:
     template = BOOK.read_bytes()
     sources = {key: (FOLDER / name).read_bytes() for key, name in SOURCE_FOR_KEY.items()}
@@ -190,10 +204,18 @@ def main() -> int:
               re.search(r"Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>(\d+)",
                         app).group(1))
 
+    deviations = total_ratio_deviations(expected_xml, sst_xml)
     exact = compare(expected_xml, got_xml, got_sst,
                     formulas_expected=formula_map(template, TARGET),
                     formulas_got=formula_map(built, TARGET),
-                    deviations=total_ratio_deviations(expected_xml, sst_xml))
+                    deviations=deviations)
+    ratio_formats = ratio_format_problems(built, TARGET, deviations)
+    if ratio_formats:
+        print(f"\n{len(ratio_formats)} ratio format problem(s):")
+        for line in ratio_formats:
+            print("  -", line)
+    else:
+        print("\ntotal-row rates show as percentages, like the footer lines")
 
     # ── 2. cross-donor: the real workflow, 27.09.2026 supplies the layout ───
     print("\n=== pass 2: 27.09.2026 donor, data compared by bank ===")
@@ -219,7 +241,7 @@ def main() -> int:
     else:
         print("\npackage ok: every part well-formed, every relationship resolves")
 
-    return 0 if (exact and same and not problems) else 1
+    return 0 if (exact and same and not problems and not ratio_formats) else 1
 
 
 def block_values(xml: str, sst_xml: str) -> dict[str, dict[str, list[float]]]:
@@ -350,9 +372,10 @@ def compare(expected: str, got: str, sst_xml: str, formulas_expected=None,
                 problems.append(f"{ref}: value {g[0]!r} != expected {e[0]!r}")
 
     exp_styles, got_styles = styles_map(expected), styles_map(got)
+    skip = set(deviations or {})
     diff = [f"{ref} {got_styles.get(ref)} != {exp_styles[ref]}"
             for ref in sorted(exp_styles)
-            if got_styles.get(ref) != exp_styles[ref]]
+            if ref not in skip and got_styles.get(ref) != exp_styles[ref]]
     if diff:
         problems.append(f"{len(diff)} style mismatch(es): " + "; ".join(diff[:12]))
 

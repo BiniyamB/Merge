@@ -498,6 +498,61 @@ def _parse_formulas(rows: Mapping[int, tuple[str, str]]) -> dict[int, dict[str, 
     return resolved
 
 
+_CELL_XFS_RE = re.compile(r"(<cellXfs\b[^>]*>)(.*?)(</cellXfs>)", re.S)
+_XF_RE = re.compile(r"<xf\b[^>]*?(?:/>|>.*?</xf>)", re.S)
+
+
+def _cell_xfs(styles_xml: str) -> tuple[str, list[str]] | None:
+    """The ``<cellXfs>`` block and its ``<xf>`` entries from ``xl/styles.xml``."""
+    match = _CELL_XFS_RE.search(styles_xml)
+    if match is None:
+        return None
+    return match.group(0), _XF_RE.findall(match.group(2))
+
+
+def _numfmt_of(styles_xml: str, style_id: str) -> str | None:
+    """The ``numFmtId`` the cell format ``style_id`` points at."""
+    found = _cell_xfs(styles_xml)
+    if found is None:
+        return None
+    try:
+        xf = found[1][int(style_id)]
+    except (ValueError, IndexError):
+        return None
+    number = re.search(r'numFmtId="(\d+)"', xf)
+    return number.group(1) if number else None
+
+
+def _style_with_numfmt(styles_xml: str, style_id: str,
+                       numfmt_id: str) -> tuple[str, str]:
+    """``style_id`` showing ``numfmt_id``, cloning the format if it has to.
+
+    Returns ``(styles_xml, style_id)``.  Without this the total row's
+    achievement and decline cells inherit the row's integer format and round
+    the percentages to ``0`` on screen.
+    """
+    found = _cell_xfs(styles_xml)
+    if found is None:
+        return styles_xml, style_id
+    block, xfs = found
+    try:
+        current = xfs[int(style_id)]
+    except (ValueError, IndexError):
+        return styles_xml, style_id
+    if re.search(rf'numFmtId="{numfmt_id}"', current):
+        return styles_xml, style_id
+    target = re.sub(r'numFmtId="\d+"', f'numFmtId="{numfmt_id}"',
+                    current, count=1)
+    for i, xf in enumerate(xfs):
+        if xf == target:
+            return styles_xml, str(i)
+    xfs.append(target)
+    opening = re.sub(r'count="\d+"', f'count="{len(xfs)}"',
+                     block[:block.index(">") + 1])
+    new_block = opening + "".join(xfs) + "</cellXfs>"
+    return styles_xml.replace(block, new_block, 1), str(len(xfs) - 1)
+
+
 # ---------------------------------------------------------------------------
 # Donor sheet
 # ---------------------------------------------------------------------------
@@ -875,7 +930,8 @@ def _build_footer_grid(totals: Mapping[str, Mapping[str, float]], footer: Monthl
 def _render_sheet(donor: DonorSheet,
                   blocks: Mapping[str, list[tuple[str, list[float]]]],
                   footer: MonthlyFooter, day: date,
-                  sst: SharedStrings | None) -> str:
+                  sst: SharedStrings | None,
+                  ratio_styles: Mapping[str, str] | None = None) -> str:
     total_rows = {key: FIRST_DATA_ROW + len(rows) for key, rows in blocks.items()}
     body_end = max(total_rows.values())
 
@@ -1003,7 +1059,7 @@ def _render_sheet(donor: DonorSheet,
     for key, numerator, denominator in TOTAL_RATIO_CELLS:
         bottom = summed[denominator]
         cells[col_index(key)] = (
-            total_styles.get(key, "0"),
+            (ratio_styles or {}).get(key) or total_styles.get(key, "0"),
             Value(summed[numerator] / bottom,
                   f"{numerator}{total_row}/{denominator}{total_row}")
             if bottom else 0.0)
@@ -1157,8 +1213,28 @@ def build_daily_sheet(template: bytes, *, sheet_name: str, day: date,
     sst = SharedStrings(parts.get(sst_part, "").decode("utf-8"))
     donor = DonorSheet.parse(parts[donor_part].decode("utf-8"), sst)
 
+    styles_part = "xl/styles.xml"
+    styles_xml = parts.get(styles_part, b"").decode("utf-8")
+    total_styles = donor.footer_style.get(2 + len(FOOTER_ROWS), {})
+    percent_fmt = None
+    for offset in range(2, 2 + len(FOOTER_ROWS)):
+        style = donor.footer_style.get(offset, {}).get("E")
+        if style:
+            percent_fmt = _numfmt_of(styles_xml, style)
+            if percent_fmt is not None:
+                break
+    ratio_styles: dict[str, str] = {}
+    if percent_fmt is not None:
+        for key, _, _ in TOTAL_RATIO_CELLS:
+            base = total_styles.get(key)
+            if base is not None:
+                styles_xml, ratio_styles[key] = _style_with_numfmt(
+                    styles_xml, base, percent_fmt)
+    if ratio_styles:
+        parts[styles_part] = styles_xml.encode("utf-8")
+
     blocks = build_blocks(sources, donor, diagnostics)
-    new_sheet = _render_sheet(donor, blocks, footer, day, sst)
+    new_sheet = _render_sheet(donor, blocks, footer, day, sst, ratio_styles)
 
     sheet_no = _max_part(parts, "xl/worksheets/sheet") + 1
     new_sheet_part = f"xl/worksheets/sheet{sheet_no}.xml"

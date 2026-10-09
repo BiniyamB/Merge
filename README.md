@@ -11,6 +11,8 @@ A small web dashboard that merges **any number of Excel reports** into
   "Successful QR Interoperable Transactions" report
 - **P2P** → the same summary merge for IPS, rendered as a styled "Successful
   IPS Interoperable Transactions" report
+- **ATM Average** → several daily ATM decline reports averaged into one
+  date × bank success-rate table
 
 When you open the app it first asks which type of report you want to merge
 (a **POS Decline**, **POS Success**, **POS**, **ATM**, **QR** or **P2P** button); the whole workflow — upload,
@@ -94,6 +96,62 @@ tabular) layout:
   `CARD_NUMBER`, …)
 - output filename follows the source convention, e.g.
   `Daily_Tranaction_Report_SmartVista_ATM_15_Aug_26_to_15_Aug_26_Merged.xlsx`
+
+## ATM Average mode
+
+Upload **any number of daily ATM reports at once** — one workbook per day —
+and they are averaged into a single date × bank table in the shape of
+`cfd.xlsx`.
+
+Each daily file is the EthSwitch *"ATM Declined Transaction Report"*: a
+`RC/BANK NAME` header, one column per bank, the decline counts per response
+code, and an `Issu. SUCC. RATE (%)` row. That row is what the average report
+reads; the decline counts are not re-derived, so the figures stay exactly
+those the daily report published.
+
+The output mirrors `cfd.xlsx`:
+
+```
+Row 1:  (empty)
+Row 2:  (empty) | CBE | BOA | ABAY | ... | GADAA        bank names
+Row 3+: (empty) | 6-Oct   | 99.56% | 99.51% | ...      one row per day
+Last:   (empty) | Average | =AVERAGE(C3:C5) | ...      live AVERAGE formulas
+```
+
+- **Both dates are read and compared.** The date in the file name
+  (`ATM Declined Transaction Report for Oct 6,2026.xlsx`) and the one in the
+  report title (`EthSwitch / October 6,2026 ...`) are parsed separately. When
+  they agree the day is used; when they disagree the file is flagged and the
+  **report's** date wins. A file whose name carries no date is noted, not
+  flagged as a mismatch
+- **Banks are unioned, never intersected.** An institution that appears in one
+  day's file but not another still gets a column; the days that do not report
+  it are left blank and excluded from that bank's average rather than counted
+  as a zero, which would read as a total failure
+- **The Average row is a simple mean** of that bank's daily rates, written as
+  a live `=AVERAGE()` formula. Every day weighs the same regardless of
+  transaction volume
+- **A bank's colour comes from the rate it displays**, so a cell reading
+  98.50% is green and one reading 98.49% is yellow
+- Duplicate dates are reported, since two files for one day would each get a
+  row and be counted twice
+- Daily reports never opened in Excel carry no cached formula results; the
+  `=B40/B41` chain behind the success rate is resolved from the counts
+  underneath, so those files average too
+- the download name holds the dates it covers, e.g.
+  `ATM_Average_Success_Rate_06-Oct-2026_to_08-Oct-2026.xlsx`
+
+### Success rate colour fills
+
+| Success rate | Fill           |
+| ------------ | -------------- |
+| 98.5% - 100% | Green `#00B050` |
+| 90% - 98.4%  | Yellow `#FFFF00` |
+| 80% - 89%    | Amber `#FFC000` |
+| <= 79%       | Red `#FF0000`   |
+
+A cell with no rate (a bank a given day did not report) is left unfilled
+rather than drawn as a zero.
 
 ## QR / P2P summary modes
 

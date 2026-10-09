@@ -43,6 +43,7 @@ from ips_report import (
     collect_ips_dates,
     filter_ips_by_dates,
 )
+import atm_average_report as atm_avg
 
 # ── Global CSS (dark / light themes) ──────────────────────────────────────
 _THEME = st.session_state.get("theme", "dark")
@@ -741,6 +742,8 @@ MODE_CARDS = [
      "desc": "Settlement workbook summarised", "type": "type-violet", "badge": "badge-purple"},
     {"key": "daily", "name": "Daily Compiled", "icon": "*",
      "desc": "Daily financial & decline report sheet", "type": "type-blue", "badge": "badge-blue"},
+    {"key": "atm_avg", "name": "ATM Average", "icon": "📈",
+     "desc": "Average ATM success rate from daily reports", "type": "type-green", "badge": "badge-green"},
 ]
 mode_keys_map = {c["name"]: c["key"] for c in MODE_CARDS}
 mode_colors = {c["name"]: c["badge"] for c in MODE_CARDS}
@@ -1011,6 +1014,105 @@ if mode_key == "daily":
         else:
             st.caption("The report was built for a different date - press "
                        "“Build report sheet” to rebuild.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+# ── ATM Average Success Rate Report (atm_avg mode) ────────────────────────
+if mode_key == "atm_avg":
+    st.markdown(f'<span class="badge {mode_color}">ATM AVERAGE</span>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-blue">2</div>'
+        '<div><p class="card-title">Upload the daily ATM reports</p>'
+        '<p class="card-sub">Drag &amp; drop one <em>ATM Declined Transaction Report</em> '
+        'workbook per day — they are all added together at once. The success rate '
+        'each bank reached that day is read from its <code>Issu. SUCC. RATE (%)</code> '
+        'row, and the report averages them per bank.</p></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    atm_files = st.file_uploader(
+        "Upload files",
+        type=["xlsx", "xls"],
+        accept_multiple_files=True,
+        label_visibility="collapsed",
+        key="atm_avg_files",
+    )
+
+    if not atm_files:
+        st.info("Upload at least one daily ATM report to build the average.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
+    with st.spinner("Reading the daily ATM reports..."):
+        atm_reports = atm_avg.read_daily_reports(
+            [(f.name, f.getvalue()) for f in atm_files])
+
+    days = [r.parsed for r in atm_reports if r.parsed is not None]
+
+    if not days:
+        for report in atm_reports:
+            st.error(f"{report.source}: {report.error}")
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
+    frame = atm_avg.build_average_frame(days)
+
+    # Two files for one date would each get a row and be counted twice in
+    # every average, so they are called out rather than merged silently.
+    for day, sources in atm_avg.duplicate_days(days).items():
+        st.warning(f"{day:%d %b %Y} was uploaded {len(sources)} times "
+                   f"({', '.join(sources)}); each counts towards the average.")
+
+    # Per-file notes: skipped files, and any name/report date disagreement.
+    notes = [(r.source, r.error or "; ".join(r.notes))
+             for r in atm_reports if r.error or r.notes]
+    if notes:
+        with st.expander(f"File checks ({len(notes)})", expanded=False):
+            for source, note in notes:
+                st.warning(f"{source}: {note}")
+
+    skipped = len(atm_reports) - len(days)
+    st.markdown(
+        f'<div class="card"><div class="card-head"><div class="card-icon icon-green">&#10003;</div>'
+        f'<div><p class="card-title">Average Report</p>'
+        f'<p class="card-sub">{len(days)} day(s) averaged across '
+        f'{len(frame.columns)} banks{"" if not skipped else f", {skipped} file(s) skipped"}</p>'
+        f'</div></div>', unsafe_allow_html=True)
+
+    # CSS takes #RRGGBB, so the leading alpha byte is dropped from the
+    # workbook's ARGB colours.
+    tiers = " ".join(
+        f'<span style="background:#{colour[2:]};color:{font[2:]};padding:2px 8px;'
+        f'border-radius:4px;font-weight:700;">{label}</span> &nbsp;'
+        for label, _, colour, font in atm_avg.ATM_RATE_TIERS)
+    st.markdown(
+        f'<div style="font-size:0.78rem;color:#a0aec0;margin-bottom:12px;">'
+        f'<b>Success Rate Color Fills:</b> {tiers}</div>',
+        unsafe_allow_html=True)
+
+    preview = frame.map(lambda v: "" if v is None or v != v else f"{v * 100:.2f}%")
+    preview.index = [idx.strftime("%d-%b-%Y") if hasattr(idx, "strftime") else idx
+                     for idx in preview.index]
+    st.dataframe(preview, use_container_width=True, height=420)
+
+    st.markdown('<div class="section-sep"><span>Download</span></div>', unsafe_allow_html=True)
+    if st.button("Download ATM Average Report", use_container_width=True,
+                 key="dl_atm_avg_btn"):
+        with st.spinner("Building the ATM average workbook..."):
+            atm_avg_bytes = atm_avg.build_atm_average_excel(days)
+        st.download_button(
+            label="Click to save ATM Average Report",
+            data=atm_avg_bytes,
+            file_name=atm_avg.report_filename(days),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="dl_atm_avg_actual",
+        )
+        del atm_avg_bytes
+        gc.collect()
 
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
@@ -1726,7 +1828,7 @@ if meta["mode_key"] in ("pos", "pos_decline", "pos_success"):
         '<b>Success Rate Color Fills:</b> '
         '<span style="background:#00B050;color:#000000;padding:2px 8px;border-radius:4px;font-weight:700;">🟩 97%–100% Green</span> &nbsp;'
         '<span style="background:#FFFF00;color:#000000;padding:2px 8px;border-radius:4px;font-weight:700;">🟨 86%–96% Yellow</span> &nbsp;'
-        '<span style="background:#FFF2CC;color:#000000;padding:2px 8px;border-radius:4px;font-weight:700;">🟧 79%–85% L. Yellow</span> &nbsp;'
+        '<span style="background:#FFC000;color:#000000;padding:2px 8px;border-radius:4px;font-weight:700;">🟧 79%–85% Amber</span> &nbsp;'
         '<span style="background:#FF0000;color:#FFFFFF;padding:2px 8px;border-radius:4px;font-weight:700;">🟥 &le;78% Red</span>'
         '</div>',
         unsafe_allow_html=True,

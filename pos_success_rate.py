@@ -86,7 +86,7 @@ def get_rate_style(rate: float) -> tuple[PatternFill, Font]:
     """Return PatternFill and Font according to Success Rate % tier rules matching POS SUCCESS RATE template:
     - 97% - 100%: Green (#00B050)
     - 86% - 96%: Yellow (#FFFF00)
-    - 79% - 85%: Light Yellow (#FFF2CC)
+    - 79% - 85%: Amber (#FFC000)
     - <= 78%: Red (#FF0000)
     """
     if rate >= 0.97:
@@ -101,7 +101,7 @@ def get_rate_style(rate: float) -> tuple[PatternFill, Font]:
         )
     elif rate >= 0.79:
         return (
-            PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"),
+            PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid"),
             Font(name="Calibri", size=11, bold=True, color="000000"),
         )
     else:

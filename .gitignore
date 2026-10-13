@@ -5,6 +5,3 @@ __pycache__/
 
 # Node.js digital-transaction-snapshot subproject
 digital-transaction-snapshot/node_modules/
-
-# UI/UX reference repos (shallow clones, study-only)
-design-reference/

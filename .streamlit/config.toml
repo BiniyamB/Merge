@@ -1,8 +1,11 @@
+# Streamlit's own palette only; `ui_theme.py` paints the rest of the UI and
+# switches between these two sets of tokens from the header toggle.
 [theme]
-primaryColor = "#a855f7"
-backgroundColor = "#0a1128"
-secondaryBackgroundColor = "#050a18"
-textColor = "#f0f4ff"
+base = "dark"
+primaryColor = "#f2a93b"
+backgroundColor = "#070b14"
+secondaryBackgroundColor = "#0e1626"
+textColor = "#ecf1f9"
 font = "sans serif"
 
 [server]

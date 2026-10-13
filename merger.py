@@ -80,6 +80,8 @@ POS_HEADER_ALIASES = {
     "PAN": "CARD_NUMBER",
     "TRANS_DATE": "TRANS_DATE",
     "TRAN_DATE": "TRANS_DATE",
+    # Some POS daily exports (e.g. "POS 8.xlsx") label the date column T_DATE
+    "T_DATE": "TRANS_DATE",
     "TRANS DATE": "TRANS_DATE",
     "TRAN DATE": "TRANS_DATE",
     "TRANSACTION DATE": "TRANS_DATE",

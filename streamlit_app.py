@@ -98,13 +98,15 @@ st.markdown("""
         0%, 100% { transform: translateY(0); }
         50%      { transform: translateY(-6px); } }
 
-    /* Override Streamlit's native theme variables so every widget follows */
+    /* Override Streamlit's native theme variables so every widget follows.
+       These must be plain colours - a gradient here is invalid CSS and makes
+       every var() that reads it fall back to its initial value. */
     :root {
-        --background-color: @@BG@@ !important;
+        --background-color: @@PANEL@@ !important;
         --secondary-background-color: @@PANEL@@ !important;
         --text-color: @@TEXT@@ !important;
         --primary-color: @@ACCENT@@ !important;
-        --font: 'Plus Jakarta Sans', sans-serif !important;
+        --font: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif !important;
     }
 
     /* Hide Streamlit chrome */
@@ -118,12 +120,20 @@ st.markdown("""
     button[title="View fullscreen"] { display: none !important; }
     div.stProfiler { display: none !important; }
 
-    /* Base */
-    .stApp {
-        background: @@BG@@ !important;
-        font-family: 'Plus Jakarta Sans', sans-serif; }
+    /* Base.
+       Streamlit renames the app wrapper between releases (.stApp exists in
+       1.6x, later builds only keep [data-testid="stAppViewContainer"]), so the
+       canvas is painted on every name and the opaque rule is declared last:
+       with equal specificity, the later rule wins, whichever element exists. */
     .block-container { max-width: 1160px; padding-top: 1.4rem; padding-bottom: 2rem; }
-    html, body, [data-testid="stAppViewContainer"] { background: transparent !important; }
+    html, body, [data-testid="stAppViewContainer"], .stMain, .stApp {
+        background: transparent !important; }
+    html, body, [data-testid="stAppViewContainer"], .stMain, .stApp {
+        background: @@BG@@ !important;
+        background-attachment: fixed !important; }
+    [data-testid="stAppViewContainer"], .stMain, .stApp {
+        color: @@TEXT@@ !important;
+        font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; }
 
     /* Gradient title */
     .gradient-title {
@@ -276,17 +286,26 @@ st.markdown("""
     ul[data-testid="stMultiselectDropdown"] { background: @@PANEL@@ !important; }
     ul[data-testid="stMultiselectDropdown"] img { border-radius: 6px !important; }
 
-    /* File uploader */
-    section[data-testid="stFileUploadDropzone"] {
+    /* File uploader. The outer <section> and the inner drop zone carry
+       different test ids across Streamlit releases, so both are painted;
+       otherwise the inner one keeps its baked dark panel in light mode. */
+    section[data-testid="stFileUploadDropzone"],
+    section[data-testid="stFileUploaderDropzone"],
+    div[data-testid="stFileUploadDropzone"] {
         background: @@CARD@@ !important;
         border: 2px dashed rgba(168,85,247,0.3) !important;
         border-radius: 16px !important; }
-    section[data-testid="stFileUploadDropzone"]:hover {
+    section[data-testid="stFileUploadDropzone"]:hover,
+    section[data-testid="stFileUploaderDropzone"]:hover {
         border-color: rgba(168,85,247,0.55) !important;
         background: rgba(168,85,247,0.04) !important; }
-    section[data-testid="stFileUploadDropzone"] button {
+    section[data-testid="stFileUploadDropzone"] button,
+    section[data-testid="stFileUploaderDropzone"] button {
         background: @@GRAD@@ !important; }
-    div[data-testid="stFileUploaderDropzoneInstructions"] div { color: @@MUTED@@ !important; }
+    div[data-testid="stFileUploaderDropzoneInstructions"] div,
+    div[data-testid="stFileUploaderDropzoneInstructions"] span,
+    div[data-testid="stFileUploaderDropzoneInstructions"] small {
+        color: @@MUTED@@ !important; }
 
     /* Tables */
     .stDataFrame { border-radius: 12px !important; overflow: hidden; }
@@ -698,8 +717,11 @@ def _handle_theme_change():
 
 with h2:
     st.markdown('<div class="theme-toggle">', unsafe_allow_html=True)
-    is_dark = st.session_state.get("theme", "dark") == "dark"
-    st.toggle("Dark mode", value=is_dark, key="theme_toggle", on_change=_handle_theme_change)
+    # `value` must not be passed alongside `key`: Streamlit then refuses to
+    # update the widget, so the switch stops responding after the first click.
+    # Seed the session once instead and let Streamlit own the widget from then on.
+    st.session_state.setdefault("theme_toggle", st.session_state.get("theme", "dark") == "dark")
+    st.toggle("Dark mode", key="theme_toggle", on_change=_handle_theme_change)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Page Navigation ──────────────────────────────────────────────────────────

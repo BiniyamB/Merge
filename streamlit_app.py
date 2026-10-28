@@ -6,7 +6,7 @@ import time
 import zipfile
 import html as html_lib
 import io
-from datetime import date as _date
+from datetime import date as _date, datetime
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -44,6 +44,8 @@ from ips_report import (
     filter_ips_by_dates,
 )
 import atm_average_report as atm_avg
+
+import product_mapping as pm
 
 # ── Global CSS (dark / light themes) ──────────────────────────────────────
 _THEME = st.session_state.get("theme", "dark")
@@ -418,6 +420,7 @@ for key, default in [
     ("pending_filters", {}),
     ("unique_values_cache", {}),
     ("snap_page", False),
+    ("pm_page", False),
     ("duplicate_records", []),
     ("interop_records", []),
     ("theme", "dark"),
@@ -705,6 +708,505 @@ def _render_snapshot_page():
     )
 
 
+def _pm_status_label(v):
+    """Display label for a product-mapping status cell."""
+    if v == "none":
+        return "Clear / not mapped"
+    return pm.STATUSES.get(v, "(not mapped)")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Product Mapping page (FI × Product coverage matrix)
+# ════════════════════════════════════════════════════════════════════════════
+def _render_product_mapping_page():
+    pm.init_db()
+
+    st.markdown(
+        '<p class="gradient-title">Product Mapping</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="subtitle">Track which financial institutions support each '
+        'EthSwitch product across <b>IPS</b>, <b>Card</b> and '
+        '<b>Shared Services</b>. Persisted in a local SQLite database.</p>',
+        unsafe_allow_html=True,
+    )
+
+    tab_matrix, tab_io, tab_manage = st.tabs(
+        ["Matrix", "Import / Export", "Manage"])
+
+    # ───────────────────────── Matrix tab ─────────────────────────
+    with tab_matrix:
+        stats = pm.get_stats()
+        institutions = pm.get_institutions(active_only=True)
+        products = pm.get_products(active_only=True)
+        mappings = pm.get_mappings([fi["id"] for fi in institutions])
+
+        # ── stats cards ──
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Financial institutions", stats["total_fis"],
+                  f'{stats["mapped_fis"]} with mapped products')
+        c2.metric("Catalogue products", stats["total_products"],
+                  f'{len(pm.PRODUCT_CATEGORIES)} product families')
+        c3.metric("Joined links", stats["by_status"]["joined"],
+                  "live with financial institutions")
+        c4.metric("In progress", stats["in_progress"],
+                  "kickoff and testing")
+        c5.metric("Overall coverage", f'{stats["coverage"]}%',
+                  f'{stats["mapped"]} mapped services')
+
+        # ── family coverage bars ──
+        st.markdown('<div class="section-sep"><span>Coverage by family</span></div>',
+                    unsafe_allow_html=True)
+        fam_cols = st.columns(len(stats["family_coverage"]))
+        for i, fam in enumerate(stats["family_coverage"]):
+            with fam_cols[i]:
+                st.markdown(
+                    f'<div style="border:1px solid rgba(255,255,255,0.08);'
+                    f'border-radius:12px;padding:10px 14px;background:rgba(255,255,255,0.035);">'
+                    f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+                    f'<span style="width:8px;height:8px;border-radius:50%;display:inline-block;"></span>'
+                    f'<div style="font-weight:800;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">{fam["name"]}</div>'
+                    f'</div>'
+                    f'<div style="font-size:0.72rem;color:#8a94b8;margin-bottom:6px;">'
+                    f'{fam["mapped"]} / {fam["possible"]} mapped</div>'
+                    f'<div style="height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;">'
+                    f'<div style="height:100%;width:{fam["coverage"]}%;background:linear-gradient(90deg,#a855f7,#3b82f6);"></div>'
+                    f'</div>'
+                    f'<div style="font-size:0.7rem;font-weight:700;margin-top:4px;">{fam["coverage"]}%</div>'
+                    f'</div>', unsafe_allow_html=True)
+
+        # ── filters ──
+        st.markdown('<div class="section-sep"><span>Filters</span></div>',
+                    unsafe_allow_html=True)
+        f1, f2, f3, f4, f5 = st.columns([2, 1.5, 1.5, 1.5, 1.5])
+        search = f1.text_input("Search institutions", key="pm_search",
+                               placeholder="Search FI name / category / notes...")
+        fi_category = f2.selectbox(
+            "FI category", [""] + pm.FI_CATEGORIES + ["__none__"],
+            key="pm_fi_category",
+            format_func=lambda v: "All categories" if v == "" else
+            ("Uncategorized" if v == "__none__" else v))
+        family = f3.selectbox(
+            "Product family", [""] + pm.PRODUCT_CATEGORIES,
+            key="pm_family",
+            format_func=lambda v: "All families" if v == "" else v)
+        product_options = [p for p in products
+                           if not family or p["category"] == family]
+        product = f4.selectbox(
+            "Product", [""] + [p["name"] for p in product_options],
+            key="pm_product",
+            format_func=lambda v: "All products" if v == "" else v)
+        status = f5.selectbox(
+            "Status", ["all", "mapped", "unmapped"] + pm.MAPPABLE_STATUSES,
+            key="pm_status",
+            format_func=lambda v: {"all": "All statuses", "mapped": "Mapped (any)",
+                                   "unmapped": "Not mapped"}.get(v, v)
+            if v in ("all", "mapped", "unmapped") else pm.STATUSES[v])
+
+        view_mode = st.segmented_control(
+            "View", ["all", "mapped", "gaps"],
+            format_func=lambda v: {"all": "All", "mapped": "Mapped only",
+                                   "gaps": "Gaps only"}[v],
+            key="pm_view_mode", default="all")
+
+        # Apply filters to institutions
+        filtered_fis = []
+        for fi in institutions:
+            haystack = f"{fi['name']} {fi['category'] or ''} {fi['notes'] or ''}".lower()
+            if search and search.lower() not in haystack:
+                continue
+            if fi_category == "__none__":
+                if fi["category"]:
+                    continue
+            elif fi_category and fi["category"] != fi_category:
+                continue
+
+            # visible products for this FI (respect family/product filter)
+            vis_products = [p for p in products
+                            if not family or p["category"] == family]
+            if product:
+                vis_products = [p for p in vis_products if p["name"] == product]
+
+            # counts
+            fm = mappings.get(fi["id"], {})
+            mapped_count = 0
+            for p in vis_products:
+                stt = fm.get(p["id"])
+                if stt is None:
+                    continue
+                if status != "all":
+                    if status in ("mapped", "unmapped"):
+                        if (status == "mapped") == (stt is None):
+                            continue
+                    elif stt != status:
+                        continue
+                mapped_count += 1
+
+            if view_mode == "mapped" and mapped_count == 0:
+                continue
+            if view_mode == "gaps" and mapped_count >= len(vis_products):
+                continue
+
+            filtered_fis.append(fi)
+
+        # visible products (respect family/product filter)
+        visible_products = [p for p in products
+                            if not family or p["category"] == family]
+        if product:
+            visible_products = [p for p in visible_products if p["name"] == product]
+
+        # ── matrix HTML ──
+        def status_badge(st):
+            if not st:
+                return ('<span style="display:inline-flex;align-items:center;'
+                        f'justify-content:center;width:100%;height:100%;'
+                        f'color:#cbd5e1;font-size:10px;">—</span>')
+            colour = pm.STATUS_COLOURS.get(st, "#94a3b8")
+            short = pm.STATUS_SHORT.get(st, st)
+            return (f'<span style="display:inline-flex;align-items:center;'
+                    f'justify-content:center;width:100%;height:100%;'
+                    f'background:{colour};color:#fff;font-weight:800;font-size:10px;'
+                    f'border-radius:6px;">{short}</span>')
+
+        # Group products by category for column bands
+        ordered = sorted(visible_products,
+                         key=lambda p: (pm.CATEGORY_ORDER.get(p["category"], 99),
+                                        p["sort_order"], p["name"]))
+        products_by_cat: dict[str, list[dict]] = {}
+        for p in ordered:
+            products_by_cat.setdefault(p["category"], []).append(p)
+
+        # Build column mapping: product index -> column letter
+        html_parts = []
+        html_parts.append(
+            '<div style="border:1px solid rgba(255,255,255,0.08);'
+            'border-radius:16px;overflow:hidden;background:rgba(255,255,255,0.035);'
+            'max-height:70vh;overflow:auto;">')
+        html_parts.append('<table style="width:100%;border-collapse:collapse;font-size:11px;">')
+        html_parts.append('<thead>')
+
+        # Row 1: FI + category bands
+        html_parts.append('<tr>')
+        html_parts.append(
+            '<th style="position:sticky;left:0;background:#0f172a;z-index:3;'
+            'border-right:1px solid rgba(255,255,255,0.08);padding:8px 12px;'
+            'text-align:left;font-weight:800;text-transform:uppercase;font-size:10px;'
+            'color:#94a3b8;">Financial institution</th>')
+        band_col = 2  # 1-based after FI col
+        for cat in pm.PRODUCT_CATEGORIES:
+            cat_products = products_by_cat.get(cat, [])
+            if not cat_products:
+                continue
+            span = len(cat_products)
+            html_parts.append(
+                f'<th colspan="{span}" style="background:linear-gradient(90deg,#4f46e5,#8b5cf6);'
+                f'color:#fff;padding:6px 4px;text-align:center;font-weight:800;'
+                f'text-transform:uppercase;font-size:9px;border-top:1px solid rgba(255,255,255,0.2);">'
+                f'{cat} ({span})</th>')
+            band_col += span
+        html_parts.append('</tr>')
+
+        # Row 2: product names
+        html_parts.append('<tr>')
+        html_parts.append('<th style="position:sticky;left:0;background:#0f172a;z-index:3;'
+                          'border-right:1px solid rgba(255,255,255,0.08);"></th>')
+        for p in ordered:
+            underline = ' style="text-decoration:underline;"' if p["is_under_project"] else ""
+            html_parts.append(
+                f'<th style="background:#1e293b;color:#fff;padding:4px 2px;'
+                f'text-align:center;font-weight:700;font-size:8px;'
+                f'writing-mode:vertical-rl;transform:rotate(180deg);'
+                f'height:52px;min-width:40px;max-width:40px;white-space:nowrap;"{underline}>'
+                f'{p["name"]}</th>')
+        html_parts.append('</tr>')
+        html_parts.append('</thead><tbody>')
+
+        product_index = {p["id"]: i for i, p in enumerate(ordered)}
+        for fi in filtered_fis:
+            fm = mappings.get(fi["id"], {})
+            cat_colour = {
+                "Bank": "#3b82f6", "MFI": "#10b981", "PSO": "#f59e0b",
+                "Wallet": "#8b5cf6", "Payment Provider": "#f43f5e", "Other": "#94a3b8",
+            }.get(fi["category"], "#94a3b8")
+            html_parts.append('<tr>')
+            html_parts.append(
+                f'<td style="position:sticky;left:0;background:#0f172a;z-index:2;'
+                f'border-right:1px solid rgba(255,255,255,0.08);padding:6px 10px;'
+                f'font-weight:700;color:#e7edff;">{fi["name"]}</td>')
+            html_parts.append(
+                f'<td style="background:#0f172a;padding:6px 8px;color:#94a3b8;font-size:9px;'
+                f'border-left:3px solid {cat_colour};">{fi["category"] or "—"}</td>')
+            for p in ordered:
+                stt = fm.get(p["id"])
+                cell_html = status_badge(stt)
+                html_parts.append(
+                    f'<td style="border:1px solid rgba(255,255,255,0.06);'
+                    f'padding:2px;text-align:center;background:rgba(255,255,255,0.02);">{cell_html}</td>')
+            html_parts.append('</tr>')
+
+        if not filtered_fis:
+            html_parts.append(
+                f'<tr><td colspan="{len(ordered) + 2}" style="text-align:center;padding:40px;color:#8a94b8;">'
+                f'No institutions match your filters.</td></tr>')
+
+        html_parts.append('</tbody></table></div>')
+        st.markdown("".join(html_parts), unsafe_allow_html=True)
+
+        st.caption(
+            f'{len(filtered_fis)} / {len(institutions)} FIs · '
+            f'{len(visible_products)} products · '
+            f'{sum(len(mappings.get(fi["id"], {})) for fi in filtered_fis)} mappings shown')
+
+        # ── edit form ──
+        st.markdown('<div class="section-sep"><span>Update a mapping</span></div>',
+                    unsafe_allow_html=True)
+        e1, e2, e3, e4 = st.columns([2, 2, 1.5, 1])
+        with e1:
+            edit_fi = st.selectbox(
+                "Institution", options=[f["name"] for f in institutions],
+                key="pm_edit_fi",
+                format_func=lambda v: v)
+        with e2:
+            edit_product = st.selectbox(
+                "Product", options=[p["name"] for p in products],
+                key="pm_edit_product",
+                format_func=lambda v: v)
+        with e3:
+            edit_status = st.selectbox(
+                "Status", options=pm.ALL_CELL_STATUSES,
+                key="pm_edit_status",
+                format_func=lambda v: "Clear / not mapped" if v == "none" else pm.STATUSES[v])
+        with e4:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("Set status", key="pm_set_status", use_container_width=True,
+                         type="primary"):
+                fi_obj = next(f for f in institutions if f["name"] == edit_fi)
+                p_obj = next(p for p in products if p["name"] == edit_product)
+                pm.toggle_mapping(fi_obj["id"], p_obj["id"], edit_status)
+                st.success(
+                    f"{edit_fi} × {edit_product} → "
+                    f"{'cleared' if edit_status == 'none' else pm.STATUSES[edit_status]}")
+                st.rerun()
+
+        # ── per-FI bulk edit ──
+        with st.expander("Bulk edit all products for one institution", expanded=False):
+            bf = st.selectbox(
+                "Institution", options=[f["name"] for f in institutions],
+                key="pm_bulk_fi")
+            fi_obj = next(f for f in institutions if f["name"] == bf)
+            fm = mappings.get(fi_obj["id"], {})
+            st.markdown(
+                f'<p style="font-size:0.75rem;color:#8a94b8;margin-bottom:8px;">'
+                f'Editing <b>{bf}</b>. Leave blank = not mapped.</p>',
+                unsafe_allow_html=True)
+            # Group products by category for display
+            prod_by_cat: dict[str, list[dict]] = {}
+            for p in products:
+                prod_by_cat.setdefault(p["category"], []).append(p)
+            for cat in pm.PRODUCT_CATEGORIES:
+                cat_prods = prod_by_cat.get(cat, [])
+                if not cat_prods:
+                    continue
+                st.markdown(
+                    f'<p style="font-weight:700;text-transform:uppercase;font-size:0.75rem;'
+                    f'letter-spacing:0.5px;color:#a855f7;margin:10px 0 4px;">{cat}</p>',
+                    unsafe_allow_html=True)
+                cols = st.columns(4)
+                for i, p in enumerate(cat_prods):
+                    cur = fm.get(p["id"])
+                    cur_label = "Clear / not mapped" if cur == "none" else (
+                        pm.STATUSES.get(cur, "(not mapped)") if cur else "(not mapped)")
+                    with cols[i % 4]:
+                        new_val = st.selectbox(
+                            p["name"],
+                            options=pm.ALL_CELL_STATUSES,
+                            index=pm.ALL_CELL_STATUSES.index(cur) if cur in pm.ALL_CELL_STATUSES else 0,
+                            key=f"pm_bulk_{p['id']}",
+                            format_func=_pm_status_label,
+                            label_visibility="collapsed")
+                        if new_val != cur:
+                            pm.toggle_mapping(fi_obj["id"], p["id"], new_val)
+                            st.rerun()
+
+    # ───────────────────────── Import / Export tab ─────────────────────────
+    with tab_io:
+        st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-emerald">&#128224;</div>'
+                    '<div><p class="card-title">Export</p>'
+                    '<p class="card-sub">Download the current mapping matrix as an Excel workbook.</p></div></div>',
+                    unsafe_allow_html=True)
+        ie1, ie2 = st.columns(2)
+        with ie1:
+            if st.button("Download Excel", key="pm_dl_excel", use_container_width=True):
+                xlsx_bytes = pm.export_excel(
+                    search=st.session_state.get("pm_search") or None,
+                    category=st.session_state.get("pm_fi_category") or None,
+                )
+                st.download_button(
+                    label="Click to save Excel",
+                    data=xlsx_bytes,
+                    file_name=f"Product_Mapping_{datetime.utcnow().strftime('%Y-%m-%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="pm_dl_excel_actual",
+                    use_container_width=True,
+                )
+        with ie2:
+            if st.button("Download template", key="pm_dl_template", use_container_width=True):
+                tpl_bytes = pm.download_template()
+                st.download_button(
+                    label="Click to save template",
+                    data=tpl_bytes,
+                    file_name=f"Product_Mapping_Import_{datetime.utcnow().strftime('%Y-%m-%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="pm_dl_template_actual",
+                    use_container_width=True,
+                )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="section-sep"><span>Import</span></div>',
+                    unsafe_allow_html=True)
+        st.markdown(
+            '<div class="card"><div class="card-head"><div class="card-icon icon-emerald">&#128206;</div>'
+            '<div><p class="card-title">Import mapping from Excel</p>'
+            '<p class="card-sub">Upload a filled template (.xlsx / .xls). New institutions are created '
+            'automatically; blank product cells keep the current mapping.</p></div></div>',
+            unsafe_allow_html=True)
+        up = st.file_uploader("Choose file", type=["xlsx", "xls"],
+                              key="pm_import_file", label_visibility="collapsed")
+        if up is not None:
+            if st.button("Import mappings", key="pm_import_btn", use_container_width=True,
+                         type="primary"):
+                try:
+                    result = pm.import_excel(up.getvalue())
+                    st.success(result["summary"])
+                    if result["errors"]:
+                        with st.expander("Warnings", expanded=True):
+                            for e in result["errors"]:
+                                st.warning(e)
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ───────────────────────── Manage tab ─────────────────────────
+    with tab_manage:
+        st.markdown('<div class="section-sep"><span>Financial institutions</span></div>',
+                    unsafe_allow_html=True)
+        m1, m2 = st.columns(2)
+        with m1:
+            st.markdown("**Add institution**")
+            ni_name = st.text_input("Name", key="pm_ni_name", placeholder="e.g. Dashen Bank")
+            ni_cat = st.selectbox("Category", [""] + pm.FI_CATEGORIES, key="pm_ni_cat",
+                                  format_func=lambda v: "Select…" if v == "" else v)
+            ni_notes = st.text_area("Notes (optional)", key="pm_ni_notes",
+                                    placeholder="Anything worth remembering...")
+            if st.button("Add institution", key="pm_add_fi", use_container_width=True):
+                if not ni_name:
+                    st.error("Institution name is required.")
+                else:
+                    try:
+                        pm.add_institution(ni_name, ni_cat or None, ni_notes or None)
+                        st.success(f"Added {ni_name}.")
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+        with m2:
+            st.markdown("**Edit / delete institution**")
+            ed_fis = pm.get_institutions(active_only=False)
+            if ed_fis:
+                ed_name = st.selectbox(
+                    "Institution", options=[f["name"] for f in ed_fis],
+                    key="pm_ed_fi")
+                ed_obj = next(f for f in ed_fis if f["name"] == ed_name)
+                en_name = st.text_input("Name", value=ed_obj["name"], key="pm_en_name")
+                en_cat = st.selectbox(
+                    "Category", [""] + pm.FI_CATEGORIES,
+                    index=(pm.FI_CATEGORIES.index(ed_obj["category"])
+                           if ed_obj["category"] in pm.FI_CATEGORIES else 0),
+                    key="pm_en_cat",
+                    format_func=lambda v: "Select…" if v == "" else v)
+                en_notes = st.text_area("Notes", value=ed_obj["notes"] or "", key="pm_en_notes")
+                en_active = st.toggle("Active", value=bool(ed_obj["is_active"]), key="pm_en_active")
+                ec1, ec2 = st.columns(2)
+                with ec1:
+                    if st.button("Save", key="pm_save_fi", use_container_width=True):
+                        try:
+                            pm.update_institution(ed_obj["id"], en_name, en_cat or None,
+                                                  en_notes or None, en_active)
+                            st.success("Institution updated.")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
+                with ec2:
+                    if st.button("Delete", key="pm_del_fi", use_container_width=True):
+                        pm.delete_institution(ed_obj["id"])
+                        st.success("Institution removed.")
+                        st.rerun()
+            else:
+                st.info("No institutions yet.")
+
+        st.markdown('<div class="section-sep"><span>Product catalogue</span></div>',
+                    unsafe_allow_html=True)
+        p1, p2 = st.columns(2)
+        with p1:
+            st.markdown("**Add product**")
+            np_name = st.text_input("Name", key="pm_np_name", placeholder="e.g. P2P")
+            np_cat = st.selectbox("Category", pm.PRODUCT_CATEGORIES, key="pm_np_cat",
+                                  index=0)
+            np_sub = st.text_input("Subgroup (optional)", key="pm_np_sub",
+                                   placeholder="e.g. QR")
+            np_desc = st.text_area("Description (optional)", key="pm_np_desc",
+                                   placeholder="...")
+            np_project = st.toggle("Under project", key="pm_np_project")
+            np_sort = st.number_input("Sort order", min_value=0, value=0, key="pm_np_sort")
+            if st.button("Add product", key="pm_add_product", use_container_width=True):
+                if not np_name:
+                    st.error("Product name is required.")
+                else:
+                    try:
+                        pm.add_product(np_name, np_cat, np_sub or None, np_desc or None,
+                                       np_project, int(np_sort))
+                        st.success(f"Added {np_name}.")
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+        with p2:
+            st.markdown("**Edit / delete product**")
+            ed_prods = pm.get_products(active_only=False)
+            if ed_prods:
+                ep_name = st.selectbox(
+                    "Product", options=[p["name"] for p in ed_prods],
+                    key="pm_ep_prod")
+                ep_obj = next(p for p in ed_prods if p["name"] == ep_name)
+                epn_name = st.text_input("Name", value=ep_obj["name"], key="pm_epn_name")
+                epn_cat = st.selectbox(
+                    "Category", pm.PRODUCT_CATEGORIES,
+                    index=pm.PRODUCT_CATEGORIES.index(ep_obj["category"]),
+                    key="pm_epn_cat")
+                epn_sub = st.text_input("Subgroup", value=ep_obj["subgroup"] or "", key="pm_epn_sub")
+                epn_desc = st.text_area("Description", value=ep_obj["description"] or "", key="pm_epn_desc")
+                epn_project = st.toggle("Under project", value=bool(ep_obj["is_under_project"]), key="pm_epn_project")
+                epn_sort = st.number_input("Sort order", min_value=0,
+                                           value=int(ep_obj["sort_order"] or 0), key="pm_epn_sort")
+                epn_active = st.toggle("Active", value=bool(ep_obj["is_active"]), key="pm_epn_active")
+                pc1, pc2 = st.columns(2)
+                with pc1:
+                    if st.button("Save", key="pm_save_prod", use_container_width=True):
+                        try:
+                            pm.update_product(ep_obj["id"], epn_name, epn_cat,
+                                              epn_sub or None, epn_desc or None,
+                                              epn_project, int(epn_sort), epn_active)
+                            st.success("Product updated.")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
+                with pc2:
+                    if st.button("Delete", key="pm_del_prod", use_container_width=True):
+                        pm.delete_product(ep_obj["id"])
+                        st.success("Product removed.")
+                        st.rerun()
+            else:
+                st.info("No products yet.")
+
+
 # ── Header ───────────────────────────────────────────────────────────────────
 h1, h2 = st.columns([5, 1])
 with h1:
@@ -727,17 +1229,27 @@ with h2:
 # ── Page Navigation ──────────────────────────────────────────────────────────
 st.markdown(
     '<div class="page-nav">', unsafe_allow_html=True)
-n1, n2 = st.columns([1, 1])
+n1, n2, n3 = st.columns([1, 1, 1])
 with n1:
     if st.button("Merged Reports", key="nav_merger", use_container_width=True):
         st.session_state.snap_page = False
+        st.session_state.pm_page = False
 with n2:
     if st.button("Transaction Snapshot", key="nav_snapshot", use_container_width=True):
         st.session_state.snap_page = True
+        st.session_state.pm_page = False
+with n3:
+    if st.button("Product Mapping", key="nav_pm", use_container_width=True):
+        st.session_state.snap_page = False
+        st.session_state.pm_page = True
 st.markdown("</div>", unsafe_allow_html=True)
 
 if st.session_state.snap_page:
     _render_snapshot_page()
+    st.stop()
+
+if st.session_state.pm_page:
+    _render_product_mapping_page()
     st.stop()
 
 # ── Mode Selection (report-type cards) ──────────────────────────────────────

@@ -475,8 +475,7 @@ def get_stats() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 def export_excel(search: str | None = None, fi_category: str | None = None,
                  family: str | None = None, product: str | None = None,
-                 status: str | None = None, view_mode: str | None = None
-                 ) -> bytes:
+                 status: str | None = None) -> bytes:
     """Build an Excel-styled workbook of the product mapping matrix.
 
     Returns the workbook bytes (.xlsx). Layout mirrors the Laravel export:
@@ -497,28 +496,19 @@ def export_excel(search: str | None = None, fi_category: str | None = None,
 
     mappings = get_mappings([fi["id"] for fi in institutions])
 
-    # Apply status / view-mode filters to institutions, mirroring the matrix.
+    # Apply status filter to institutions, mirroring the matrix.
     filtered_fis = []
     for fi in institutions:
         fm = mappings.get(fi["id"], {})
-        mapped_count = 0
-        for p in visible_products:
-            stt = fm.get(p["id"])
-            if stt is None:
-                continue
-            if status in ("mapped", "unmapped"):
-                if (status == "mapped") == (stt is None):
-                    continue
-            elif status and stt != status:
-                continue
-            mapped_count += 1
-
-        if view_mode == "mapped" and mapped_count == 0:
-            continue
-        if view_mode == "gaps" and mapped_count >= len(visible_products):
-            continue
-
-        filtered_fis.append(fi)
+        keep = True
+        if status == "mapped":
+            keep = any(fm.get(p["id"]) is not None for p in visible_products)
+        elif status == "unmapped":
+            keep = any(fm.get(p["id"]) is None for p in visible_products)
+        elif status and status not in ("mapped", "unmapped"):
+            keep = any(fm.get(p["id"]) == status for p in visible_products)
+        if keep:
+            filtered_fis.append(fi)
 
     ordered = sorted(visible_products,
                      key=lambda p: (CATEGORY_ORDER.get(p["category"], 99),

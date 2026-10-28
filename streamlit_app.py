@@ -802,12 +802,6 @@ def _render_product_mapping_page():
                                    "unmapped": "Not mapped"}.get(v, v)
             if v in ("all", "mapped", "unmapped") else pm.STATUSES[v])
 
-        view_mode = st.segmented_control(
-            "View", ["all", "mapped", "gaps"],
-            format_func=lambda v: {"all": "All", "mapped": "Mapped only",
-                                   "gaps": "Gaps only"}[v],
-            key="pm_view_mode", default="all")
-
         # Apply filters to institutions
         filtered_fis = []
         for fi in institutions:
@@ -826,24 +820,16 @@ def _render_product_mapping_page():
             if product:
                 vis_products = [p for p in vis_products if p["name"] == product]
 
-            # counts
+            # Apply status filter to institutions, mirroring the matrix.
             fm = mappings.get(fi["id"], {})
-            mapped_count = 0
-            for p in vis_products:
-                stt = fm.get(p["id"])
-                if stt is None:
-                    continue
-                if status != "all":
-                    if status in ("mapped", "unmapped"):
-                        if (status == "mapped") == (stt is None):
-                            continue
-                    elif stt != status:
-                        continue
-                mapped_count += 1
-
-            if view_mode == "mapped" and mapped_count == 0:
-                continue
-            if view_mode == "gaps" and mapped_count >= len(vis_products):
+            keep = True
+            if status == "mapped":
+                keep = any(fm.get(p["id"]) is not None for p in vis_products)
+            elif status == "unmapped":
+                keep = any(fm.get(p["id"]) is None for p in vis_products)
+            elif status and status not in ("mapped", "unmapped"):
+                keep = any(fm.get(p["id"]) == status for p in vis_products)
+            if not keep:
                 continue
 
             filtered_fis.append(fi)
@@ -1042,7 +1028,6 @@ def _render_product_mapping_page():
                     family=st.session_state.get("pm_family") or None,
                     product=st.session_state.get("pm_product") or None,
                     status=st.session_state.get("pm_status") or None,
-                    view_mode=st.session_state.get("pm_view_mode") or None,
                 )
                 st.download_button(
                     label="Click to save Excel",

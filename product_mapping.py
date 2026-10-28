@@ -473,18 +473,54 @@ def get_stats() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Excel export (mirrors Laravel export)
 # ---------------------------------------------------------------------------
-def export_excel(search: str | None = None, category: str | None = None) -> bytes:
+def export_excel(search: str | None = None, fi_category: str | None = None,
+                 family: str | None = None, product: str | None = None,
+                 status: str | None = None, view_mode: str | None = None
+                 ) -> bytes:
     """Build an Excel-styled workbook of the product mapping matrix.
 
     Returns the workbook bytes (.xlsx). Layout mirrors the Laravel export:
     rows = FIs, columns = products grouped by category, cell = short status.
+
+    All filters mirror the Streamlit matrix UI so the exported file holds
+    exactly the currently-filtered view.
     """
     institutions = get_institutions(active_only=True, search=search,
-                                    category=category)
-    products = get_products(active_only=True)
+                                    category=fi_category)
+    all_products = get_products(active_only=True)
+
+    # Visible products (family / product filter).
+    visible_products = [p for p in all_products
+                        if not family or p["category"] == family]
+    if product:
+        visible_products = [p for p in visible_products if p["name"] == product]
+
     mappings = get_mappings([fi["id"] for fi in institutions])
 
-    ordered = sorted(products,
+    # Apply status / view-mode filters to institutions, mirroring the matrix.
+    filtered_fis = []
+    for fi in institutions:
+        fm = mappings.get(fi["id"], {})
+        mapped_count = 0
+        for p in visible_products:
+            stt = fm.get(p["id"])
+            if stt is None:
+                continue
+            if status in ("mapped", "unmapped"):
+                if (status == "mapped") == (stt is None):
+                    continue
+            elif status and stt != status:
+                continue
+            mapped_count += 1
+
+        if view_mode == "mapped" and mapped_count == 0:
+            continue
+        if view_mode == "gaps" and mapped_count >= len(visible_products):
+            continue
+
+        filtered_fis.append(fi)
+
+    ordered = sorted(visible_products,
                      key=lambda p: (CATEGORY_ORDER.get(p["category"], 99),
                                     p["sort_order"], p["name"]))
     products_by_cat: dict[str, list[dict]] = {}
@@ -530,7 +566,7 @@ def export_excel(search: str | None = None, category: str | None = None) -> byte
         ws.cell(row=header_row, column=cidx).font = Font(color="FF1E293B", bold=True, size=8)
 
     r = data_start
-    for fi in institutions:
+    for fi in filtered_fis:
         ws.cell(row=r, column=1, value=fi["name"]).font = Font(bold=True)
         ws.cell(row=r, column=2, value=fi["category"] or "—")
         fm = mappings.get(fi["id"], {})

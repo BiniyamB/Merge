@@ -1038,7 +1038,11 @@ def _render_product_mapping_page():
             if st.button("Download Excel", key="pm_dl_excel", use_container_width=True):
                 xlsx_bytes = pm.export_excel(
                     search=st.session_state.get("pm_search") or None,
-                    category=st.session_state.get("pm_fi_category") or None,
+                    fi_category=st.session_state.get("pm_fi_category") or None,
+                    family=st.session_state.get("pm_family") or None,
+                    product=st.session_state.get("pm_product") or None,
+                    status=st.session_state.get("pm_status") or None,
+                    view_mode=st.session_state.get("pm_view_mode") or None,
                 )
                 st.download_button(
                     label="Click to save Excel",

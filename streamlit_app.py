@@ -1004,9 +1004,27 @@ def _render_product_mapping_page():
                 key="pm_bulk_fi")
             fi_obj = next(f for f in institutions if f["name"] == bf)
             fm = mappings.get(fi_obj["id"], {})
+            # Quick set status for all products of this institution
+            qs1, qs2 = st.columns([2, 1])
+            with qs1:
+                q_status = st.selectbox(
+                    "Set all products to", options=pm.ALL_CELL_STATUSES,
+                    key="pm_qs_status",
+                    format_func=lambda v: "Clear / not mapped" if v == "none"
+                    else pm.STATUSES[v])
+            with qs2:
+                st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                if st.button("Apply to all products", key="pm_qs_apply",
+                             use_container_width=True, type="primary"):
+                    for p in products:
+                        pm.toggle_mapping(fi_obj["id"], p["id"], q_status)
+                    st.success(
+                        f"Applied '{'cleared' if q_status == 'none' else pm.STATUSES[q_status]}' "
+                        f"to all {len(products)} products for {bf}.")
+                    st.rerun()
             st.markdown(
                 f'<p style="font-size:0.75rem;color:#8a94b8;margin-bottom:8px;">'
-                f'Editing <b>{bf}</b>. Leave blank = not mapped.</p>',
+                f'Editing <b>{bf}</b>. Individual select boxes below also update live.</p>',
                 unsafe_allow_html=True)
             # Group products by category for display
             prod_by_cat: dict[str, list[dict]] = {}

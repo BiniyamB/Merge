@@ -997,32 +997,6 @@ def _render_product_mapping_page():
                     except ValueError as exc:
                         st.error(str(exc))
 
-        # ── single-cell update ──
-        st.markdown('<div class="section-sep"><span>Update one mapping</span></div>',
-                    unsafe_allow_html=True)
-        u1, u2, u3, u4 = st.columns([2, 2, 1.5, 1])
-        with u1:
-            u_fi = st.selectbox("Institution", options=[f["name"] for f in institutions],
-                                key="pm_u_fi")
-        with u2:
-            u_product = st.selectbox("Product", options=[p["name"] for p in products],
-                                     key="pm_u_product")
-        with u3:
-            u_status = st.selectbox("Status", options=pm.ALL_CELL_STATUSES,
-                                    key="pm_u_status",
-                                    format_func=lambda v: "Clear / not mapped" if v == "none"
-                                    else pm.STATUSES[v])
-        with u4:
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("Set status", key="pm_u_set", use_container_width=True, type="primary"):
-                ufi = next(f for f in institutions if f["name"] == u_fi)
-                uprod = next(p for p in products if p["name"] == u_product)
-                pm.toggle_mapping(ufi["id"], uprod["id"], u_status)
-                st.success(
-                    f"{u_fi} × {u_product} → "
-                    f"{'cleared' if u_status == 'none' else pm.STATUSES[u_status]}")
-                st.rerun()
-
         # ── per-FI bulk edit ──
         with st.expander("Bulk edit all products for one institution", expanded=False):
             bf = st.selectbox(

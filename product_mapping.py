@@ -505,7 +505,7 @@ def export_excel(search: str | None = None, fi_category: str | None = None,
             keep = any(fm.get(p["id"]) is not None for p in visible_products)
         elif status == "unmapped":
             keep = any(fm.get(p["id"]) is None for p in visible_products)
-        elif status and status not in ("mapped", "unmapped"):
+        elif status and status not in ("all", "mapped", "unmapped"):
             keep = any(fm.get(p["id"]) == status for p in visible_products)
         if keep:
             filtered_fis.append(fi)

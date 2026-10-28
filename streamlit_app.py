@@ -942,6 +942,87 @@ def _render_product_mapping_page():
             f'{len(visible_products)} products · '
             f'{sum(len(mappings.get(fi["id"], {})) for fi in filtered_fis)} mappings shown')
 
+        # ── Export / Import (in the matrix view) ──
+        st.markdown('<div class="section-sep"><span>Export / Import</span></div>',
+                    unsafe_allow_html=True)
+        ei1, ei2, ei3 = st.columns([1.5, 1.5, 2])
+        with ei1:
+            if st.button("Download Excel", key="pm_dl_excel_matrix", use_container_width=True,
+                         type="primary"):
+                xlsx_bytes = pm.export_excel(
+                    search=st.session_state.get("pm_search") or None,
+                    fi_category=st.session_state.get("pm_fi_category") or None,
+                    family=st.session_state.get("pm_family") or None,
+                    product=st.session_state.get("pm_product") or None,
+                    status=st.session_state.get("pm_status") or None,
+                )
+                st.download_button(
+                    label="Click to save Excel",
+                    data=xlsx_bytes,
+                    file_name=f"Product_Mapping_{datetime.utcnow().strftime('%Y-%m-%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="pm_dl_excel_matrix_actual",
+                    use_container_width=True,
+                )
+        with ei2:
+            if st.button("Download template", key="pm_dl_template_matrix", use_container_width=True):
+                tpl_bytes = pm.download_template()
+                st.download_button(
+                    label="Click to save template",
+                    data=tpl_bytes,
+                    file_name=f"Product_Mapping_Import_{datetime.utcnow().strftime('%Y-%m-%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="pm_dl_template_matrix_actual",
+                    use_container_width=True,
+                )
+        with ei3:
+            st.markdown(
+                '<div class="card"><div class="card-head"><div class="card-icon icon-emerald">&#128206;</div>'
+                '<div><p class="card-title">Import mapping</p>'
+                '<p class="card-sub">Upload a filled template to update mappings in bulk.</p></div></div>',
+                unsafe_allow_html=True)
+            up = st.file_uploader("Choose file", type=["xlsx", "xls"],
+                                  key="pm_import_matrix_file", label_visibility="collapsed")
+            if up is not None:
+                if st.button("Import mappings", key="pm_import_matrix_btn",
+                             use_container_width=True, type="primary"):
+                    try:
+                        result = pm.import_excel(up.getvalue())
+                        st.success(result["summary"])
+                        if result["errors"]:
+                            with st.expander("Warnings", expanded=True):
+                                for e in result["errors"]:
+                                    st.warning(e)
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+
+        # ── single-cell update ──
+        st.markdown('<div class="section-sep"><span>Update one mapping</span></div>',
+                    unsafe_allow_html=True)
+        u1, u2, u3, u4 = st.columns([2, 2, 1.5, 1])
+        with u1:
+            u_fi = st.selectbox("Institution", options=[f["name"] for f in institutions],
+                                key="pm_u_fi")
+        with u2:
+            u_product = st.selectbox("Product", options=[p["name"] for p in products],
+                                     key="pm_u_product")
+        with u3:
+            u_status = st.selectbox("Status", options=pm.ALL_CELL_STATUSES,
+                                    key="pm_u_status",
+                                    format_func=lambda v: "Clear / not mapped" if v == "none"
+                                    else pm.STATUSES[v])
+        with u4:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("Set status", key="pm_u_set", use_container_width=True, type="primary"):
+                ufi = next(f for f in institutions if f["name"] == u_fi)
+                uprod = next(p for p in products if p["name"] == u_product)
+                pm.toggle_mapping(ufi["id"], uprod["id"], u_status)
+                st.success(
+                    f"{u_fi} × {u_product} → "
+                    f"{'cleared' if u_status == 'none' else pm.STATUSES[u_status]}")
+                st.rerun()
+
         # ── per-FI bulk edit ──
         with st.expander("Bulk edit all products for one institution", expanded=False):
             bf = st.selectbox(
@@ -983,65 +1064,13 @@ def _render_product_mapping_page():
 
     # ───────────────────────── Import / Export tab ─────────────────────────
     with tab_io:
-        st.markdown('<div class="card"><div class="card-head"><div class="card-icon icon-emerald">&#128224;</div>'
-                    '<div><p class="card-title">Export</p>'
-                    '<p class="card-sub">Download the current mapping matrix as an Excel workbook.</p></div></div>',
-                    unsafe_allow_html=True)
-        ie1, ie2 = st.columns(2)
-        with ie1:
-            if st.button("Download Excel", key="pm_dl_excel", use_container_width=True):
-                xlsx_bytes = pm.export_excel(
-                    search=st.session_state.get("pm_search") or None,
-                    fi_category=st.session_state.get("pm_fi_category") or None,
-                    family=st.session_state.get("pm_family") or None,
-                    product=st.session_state.get("pm_product") or None,
-                    status=st.session_state.get("pm_status") or None,
-                )
-                st.download_button(
-                    label="Click to save Excel",
-                    data=xlsx_bytes,
-                    file_name=f"Product_Mapping_{datetime.utcnow().strftime('%Y-%m-%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="pm_dl_excel_actual",
-                    use_container_width=True,
-                )
-        with ie2:
-            if st.button("Download template", key="pm_dl_template", use_container_width=True):
-                tpl_bytes = pm.download_template()
-                st.download_button(
-                    label="Click to save template",
-                    data=tpl_bytes,
-                    file_name=f"Product_Mapping_Import_{datetime.utcnow().strftime('%Y-%m-%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="pm_dl_template_actual",
-                    use_container_width=True,
-                )
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        st.markdown('<div class="section-sep"><span>Import</span></div>',
-                    unsafe_allow_html=True)
         st.markdown(
-            '<div class="card"><div class="card-head"><div class="card-icon icon-emerald">&#128206;</div>'
-            '<div><p class="card-title">Import mapping from Excel</p>'
-            '<p class="card-sub">Upload a filled template (.xlsx / .xls). New institutions are created '
-            'automatically; blank product cells keep the current mapping.</p></div></div>',
+            '<div class="card"><div class="card-head"><div class="card-icon icon-emerald">&#128224;</div>'
+            '<div><p class="card-title">Export &amp; Import</p>'
+            '<p class="card-sub">Export / Import controls are available directly on the <b>Matrix</b> tab '
+            '(buttons under the matrix). Use this tab only as a reference.</p></div></div>',
             unsafe_allow_html=True)
-        up = st.file_uploader("Choose file", type=["xlsx", "xls"],
-                              key="pm_import_file", label_visibility="collapsed")
-        if up is not None:
-            if st.button("Import mappings", key="pm_import_btn", use_container_width=True,
-                         type="primary"):
-                try:
-                    result = pm.import_excel(up.getvalue())
-                    st.success(result["summary"])
-                    if result["errors"]:
-                        with st.expander("Warnings", expanded=True):
-                            for e in result["errors"]:
-                                st.warning(e)
-                    st.rerun()
-                except ValueError as exc:
-                    st.error(str(exc))
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.info("Go to the Matrix tab to download Excel / template or upload an import file.")
 
     # ───────────────────────── Manage tab ─────────────────────────
     with tab_manage:

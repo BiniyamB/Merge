@@ -827,7 +827,7 @@ def _render_product_mapping_page():
                 keep = any(fm.get(p["id"]) is not None for p in vis_products)
             elif status == "unmapped":
                 keep = any(fm.get(p["id"]) is None for p in vis_products)
-            elif status and status not in ("mapped", "unmapped"):
+            elif status and status not in ("all", "mapped", "unmapped"):
                 keep = any(fm.get(p["id"]) == status for p in vis_products)
             if not keep:
                 continue
@@ -1007,8 +1007,7 @@ def _render_product_mapping_page():
                             options=pm.ALL_CELL_STATUSES,
                             index=pm.ALL_CELL_STATUSES.index(cur) if cur in pm.ALL_CELL_STATUSES else 0,
                             key=f"pm_bulk_{p['id']}",
-                            format_func=_pm_status_label,
-                            label_visibility="collapsed")
+                            format_func=_pm_status_label)
                         if new_val != cur:
                             pm.toggle_mapping(fi_obj["id"], p["id"], new_val)
                             st.rerun()

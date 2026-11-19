@@ -2028,19 +2028,32 @@ if mode_key == "daily_rate":
 
     st.markdown('<div class="section-sep"><span>ATM Decline Counts (Copyable Text)</span></div>', unsafe_allow_html=True)
     with st.expander("Add a specific issue for a bank (optional)", expanded=False):
-        st.caption("Write a note for any bank below 98.5%. Leave it blank to show that "
-                   "bank's response codes and decline counts instead.")
-        for issue_bank, issue_rate, _ in dsr.below_green_declines(rate_report):
+        st.caption("Write a sentence for any bank that has a known issue. Leave it "
+                   "blank to describe that bank by its response codes instead.")
+        issue_banks = [bank for bank, _, _ in dsr.below_green_declines(rate_report)]
+        issue_banks += [bank for bank, _ in rate_report.atm
+                        if bank != "Total" and bank not in issue_banks]
+        for issue_bank in issue_banks:
             st.text_area(
-                f"{issue_bank} ({issue_rate * 100:.1f}%)",
+                issue_bank,
                 key=f"daily_rate_issue_{issue_bank}",
-                height=70,
-                placeholder="e.g. Issuer core banking downtime between 10:00 and 14:00",
+                height=68,
+                placeholder="e.g. They had a CBS performance issue.",
             )
-    rate_issues = {
-        bank: st.session_state.get(f"daily_rate_issue_{bank}", "")
-        for bank, _, _ in dsr.below_green_declines(rate_report)
-    }
+        st.markdown("**Another bank (optional)**")
+        st.text_input("Bank name", key="daily_rate_extra_bank")
+        st.text_area("Specific issue", key="daily_rate_extra_issue", height=68,
+                     placeholder="e.g. Their card service was not working.")
+
+    rate_issues = {}
+    for bank in issue_banks:
+        note = st.session_state.get(f"daily_rate_issue_{bank}", "")
+        if note and note.strip():
+            rate_issues[bank] = note
+    extra_bank = st.session_state.get("daily_rate_extra_bank", "")
+    extra_issue = st.session_state.get("daily_rate_extra_issue", "")
+    if extra_bank and extra_bank.strip() and extra_issue and extra_issue.strip():
+        rate_issues[extra_bank.strip()] = extra_issue
     rate_declines = dsr.declines_text(rate_report, rate_issues)
     st.text_area(
         "Select the text below and copy it",

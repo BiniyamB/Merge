@@ -174,34 +174,34 @@ def test_below_green_declines_exclude_the_cardholder_codes():
 def test_declines_are_copyable_text_and_not_in_excel_or_png():
     report = dsr.combine(dsr.read_reports(sample_payloads()))
     text = dsr.declines_text(report)
-    assert "ATM institutions below 98.5%" in text
-    assert "Excluded response codes: 821, 901, 904, 906, 911, 912, 914, 915" in text
-    assert "OIB (86.6%)" in text
-    assert "801" in text and "159" in text
+    lines = text.splitlines()
+    assert lines[0] == "BUNNA: They had 905 and 917 response code declines."
+    assert lines[2] == "LION: They had 801, 905 and 917 response code declines."
+    assert "Tseday: They had 801, 886 and 917 response code declines." in lines
+    assert all(line.endswith(".") for line in lines)
+    assert "159" not in text
 
     ws = openpyxl.load_workbook(
         io.BytesIO(dsr.build_success_rate_excel(report))).active
     values = [cell.value for row in ws.iter_rows() for cell in row
               if cell.value is not None]
-    assert not any("decline response codes" in str(value).lower()
-                   for value in values)
     assert 159 not in values
 
     html = dsr.build_preview_html(report)
-    assert "ATM institutions below 98.5%" not in html
+    assert "response code declines" not in html
     assert "159" not in html
 
 
 def test_a_specific_issue_replaces_the_response_codes_for_that_bank():
     report = dsr.combine(dsr.read_reports(sample_payloads()))
     text = dsr.declines_text(report, {
-        "Tseday": "Issuer core banking downtime between 10:00 and 14:00.",
+        "Tseday": "They had a CBS performance issue.",
     })
-    section = text.split("Tseday (91.1%)")[1].split("\n\n")[0]
-    assert "Issuer core banking downtime between 10:00 and 14:00." in section
-    assert "801" not in section
-    other = text.split("OIB (86.6%)")[1].split("\n\n")[0]
-    assert "801" in other and "159" in other
+    assert "Tseday: They had a CBS performance issue." in text.splitlines()
+    assert "Tseday: They had 801" not in text
+    assert "OIB: They had 801, 802, 905, 917 and 939 response code declines." in text
+    assert "Oromia: Their card service was not working." in dsr.declines_text(
+        report, {"Oromia": "Their card service was not working"})
 
 
 def test_generated_workbook_matches_the_reference_sample():

@@ -516,34 +516,47 @@ def excluded_codes_text() -> str:
     return ", ".join(str(code) for code in EXCLUDED_DECLINE_CODES)
 
 
+def _join_codes(codes: list[str]) -> str:
+    if len(codes) == 1:
+        return codes[0]
+    if len(codes) == 2:
+        return f"{codes[0]} and {codes[1]}"
+    return ", ".join(codes[:-1]) + " and " + codes[-1]
+
+
 def declines_text(report: DailySuccessReport,
                   issues: dict[str, str] | None = None) -> str:
-    """The decline breakdown as plain, selectable text for copy/paste.
+    """One short prose line per bank, ready to copy into a report.
 
-    A bank with a user-supplied specific issue shows that note instead of its
-    response-code breakdown; every other bank keeps the code/count listing.
+    Banks with a user-written specific issue show that sentence verbatim.
+    Every other bank is described by the response codes left after the
+    cardholder-related exclusions, e.g. ``Bunna: They had 905 and 917
+    response code declines.``
     """
     issues = issues or {}
-    lines = [
-        "ATM institutions below 98.5% - decline response codes",
-        f"Excluded response codes: {excluded_codes_text()}",
-        "",
-    ]
+    declines = report.atm_declines or {}
     below = below_green_declines(report)
-    if not below:
-        lines.append("All ATM institutions are at or above 98.5%.")
-    for bank, rate, items in below:
-        lines.append(f"{bank} ({rate * 100:.1f}%)")
+
+    banks = [bank for bank, _, _ in below]
+    for bank in issues:
+        if bank not in banks:
+            banks.append(bank)
+
+    lines: list[str] = []
+    for bank in banks:
         note = str(issues.get(bank, "") or "").strip()
         if note:
-            for note_line in note.splitlines():
-                if note_line.strip():
-                    lines.append(f"  {note_line.strip()}")
+            if not note.endswith("."):
+                note += "."
+            lines.append(f"{bank}: {note}")
+            continue
+        codes = sorted(declines.get(bank, {}), key=int)
+        if codes:
+            lines.append(f"{bank}: They had {_join_codes(codes)} "
+                         "response code declines.")
         else:
-            for code, count, description in items:
-                lines.append(f"  {code:<4} {description:<40} {count:>8}")
-        lines.append("")
-    return "\n".join(lines).rstrip()
+            lines.append(f"{bank}: They had no counted declines.")
+    return "\n".join(lines)
 
 
 def preview_height(report: DailySuccessReport) -> int:

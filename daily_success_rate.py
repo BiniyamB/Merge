@@ -516,8 +516,14 @@ def excluded_codes_text() -> str:
     return ", ".join(str(code) for code in EXCLUDED_DECLINE_CODES)
 
 
-def declines_text(report: DailySuccessReport) -> str:
-    """The decline breakdown as plain, selectable text for copy/paste."""
+def declines_text(report: DailySuccessReport,
+                  issues: dict[str, str] | None = None) -> str:
+    """The decline breakdown as plain, selectable text for copy/paste.
+
+    A bank with a user-supplied specific issue shows that note instead of its
+    response-code breakdown; every other bank keeps the code/count listing.
+    """
+    issues = issues or {}
     lines = [
         "ATM institutions below 98.5% - decline response codes",
         f"Excluded response codes: {excluded_codes_text()}",
@@ -528,8 +534,14 @@ def declines_text(report: DailySuccessReport) -> str:
         lines.append("All ATM institutions are at or above 98.5%.")
     for bank, rate, items in below:
         lines.append(f"{bank} ({rate * 100:.1f}%)")
-        for code, count, description in items:
-            lines.append(f"  {code:<4} {description:<40} {count:>8}")
+        note = str(issues.get(bank, "") or "").strip()
+        if note:
+            for note_line in note.splitlines():
+                if note_line.strip():
+                    lines.append(f"  {note_line.strip()}")
+        else:
+            for code, count, description in items:
+                lines.append(f"  {code:<4} {description:<40} {count:>8}")
         lines.append("")
     return "\n".join(lines).rstrip()
 

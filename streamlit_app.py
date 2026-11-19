@@ -53,6 +53,7 @@ _THEME = st.session_state.get("theme", "dark")
 st.session_state.setdefault("mode_key", "pos_decline")
 st.session_state.setdefault("snap_page", False)
 st.session_state.setdefault("daily_rate_result", None)
+st.session_state.setdefault("daily_rate_issues", {})
 
 _PALETTES = {
     "dark": {
@@ -1293,6 +1294,7 @@ for i, card in enumerate(MODE_CARDS):
             st.session_state.ips_selected_dates = []
             st.session_state.daily_result = None
             st.session_state.daily_rate_result = None
+            st.session_state.daily_rate_issues = {}
             gc.collect()
 
 if st.session_state.mode_key is None:
@@ -2025,7 +2027,21 @@ if mode_key == "daily_rate":
                "connection is required.")
 
     st.markdown('<div class="section-sep"><span>ATM Decline Counts (Copyable Text)</span></div>', unsafe_allow_html=True)
-    rate_declines = dsr.declines_text(rate_report)
+    with st.expander("Add a specific issue for a bank (optional)", expanded=False):
+        st.caption("Write a note for any bank below 98.5%. Leave it blank to show that "
+                   "bank's response codes and decline counts instead.")
+        for issue_bank, issue_rate, _ in dsr.below_green_declines(rate_report):
+            st.text_area(
+                f"{issue_bank} ({issue_rate * 100:.1f}%)",
+                key=f"daily_rate_issue_{issue_bank}",
+                height=70,
+                placeholder="e.g. Issuer core banking downtime between 10:00 and 14:00",
+            )
+    rate_issues = {
+        bank: st.session_state.get(f"daily_rate_issue_{bank}", "")
+        for bank, _, _ in dsr.below_green_declines(rate_report)
+    }
+    rate_declines = dsr.declines_text(rate_report, rate_issues)
     st.text_area(
         "Select the text below and copy it",
         value=rate_declines,

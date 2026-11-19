@@ -192,6 +192,18 @@ def test_declines_are_copyable_text_and_not_in_excel_or_png():
     assert "159" not in html
 
 
+def test_a_specific_issue_replaces_the_response_codes_for_that_bank():
+    report = dsr.combine(dsr.read_reports(sample_payloads()))
+    text = dsr.declines_text(report, {
+        "Tseday": "Issuer core banking downtime between 10:00 and 14:00.",
+    })
+    section = text.split("Tseday (91.1%)")[1].split("\n\n")[0]
+    assert "Issuer core banking downtime between 10:00 and 14:00." in section
+    assert "801" not in section
+    other = text.split("OIB (86.6%)")[1].split("\n\n")[0]
+    assert "801" in other and "159" in other
+
+
 def test_generated_workbook_matches_the_reference_sample():
     """Every value, fill, format, font, border and merge matches sample.xlsx."""
     path = ROOT / SAMPLE_FILE

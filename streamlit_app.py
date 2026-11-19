@@ -2045,6 +2045,8 @@ if mode_key == "daily_rate":
         st.text_area("Specific issue", key="daily_rate_extra_issue", height=68,
                      placeholder="e.g. Their card service was not working.")
 
+    st.button("Update report text", key="daily_rate_update_text",
+              help="Apply the specific issues written above to the copyable text.")
     rate_issues = {}
     for bank in issue_banks:
         note = st.session_state.get(f"daily_rate_issue_{bank}", "")
@@ -2059,7 +2061,7 @@ if mode_key == "daily_rate":
         "Select the text below and copy it",
         value=rate_declines,
         height=min(600, 60 + len(rate_declines.splitlines()) * 20),
-        key="daily_rate_declines_text",
+        key=f"daily_rate_declines_{hash(rate_declines)}",
     )
 
     if st.button("Download Excel Report", use_container_width=True,

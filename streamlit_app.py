@@ -2020,8 +2020,18 @@ if mode_key == "daily_rate":
         height=dsr.preview_height(rate_report),
         scrolling=True,
     )
-    st.caption("Use the Download PNG button in the preview to save an image. PNG export "
-               "loads html2canvas from a CDN, so an internet connection is required.")
+    st.caption("Use the Download PNG button in the preview to save the rate table as an "
+               "image. PNG export loads html2canvas from a CDN, so an internet "
+               "connection is required.")
+
+    st.markdown('<div class="section-sep"><span>ATM Decline Counts (Copyable Text)</span></div>', unsafe_allow_html=True)
+    rate_declines = dsr.declines_text(rate_report)
+    st.text_area(
+        "Select the text below and copy it",
+        value=rate_declines,
+        height=min(600, 60 + len(rate_declines.splitlines()) * 20),
+        key="daily_rate_declines_text",
+    )
 
     if st.button("Download Excel Report", use_container_width=True,
                  key="daily_rate_dl_excel"):

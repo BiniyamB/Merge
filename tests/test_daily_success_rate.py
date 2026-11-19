@@ -171,18 +171,25 @@ def test_below_green_declines_exclude_the_cardholder_codes():
     assert oib == {"801": 159, "802": 357, "939": 15, "905": 2, "917": 24}
 
 
-def test_excel_and_preview_include_the_decline_detail():
+def test_declines_are_copyable_text_and_not_in_excel_or_png():
     report = dsr.combine(dsr.read_reports(sample_payloads()))
+    text = dsr.declines_text(report)
+    assert "ATM institutions below 98.5%" in text
+    assert "Excluded response codes: 821, 901, 904, 906, 911, 912, 914, 915" in text
+    assert "OIB (86.6%)" in text
+    assert "801" in text and "159" in text
+
     ws = openpyxl.load_workbook(
         io.BytesIO(dsr.build_success_rate_excel(report))).active
-    rows = [[cell.value for cell in row] for row in ws.iter_rows()]
-    assert any("ATM institutions below 98.5%" in str(value)
-               for row in rows for value in row if value is not None)
-    assert any(row[3] == 801 and row[4] == 159 for row in rows if len(row) > 4)
+    values = [cell.value for row in ws.iter_rows() for cell in row
+              if cell.value is not None]
+    assert not any("decline response codes" in str(value).lower()
+                   for value in values)
+    assert 159 not in values
 
     html = dsr.build_preview_html(report)
-    assert "ATM institutions below 98.5%" in html
-    assert "159" in html and "excluded: 821, 901" in html
+    assert "ATM institutions below 98.5%" not in html
+    assert "159" not in html
 
 
 def test_generated_workbook_matches_the_reference_sample():

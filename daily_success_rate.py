@@ -43,6 +43,7 @@ __all__ = [
     "build_preview_html",
     "build_success_rate_excel",
     "combine",
+    "declines_text",
     "POS_RATE_TIERS",
     "parse_report_date",
     "pretty_date",
@@ -515,11 +516,27 @@ def excluded_codes_text() -> str:
     return ", ".join(str(code) for code in EXCLUDED_DECLINE_CODES)
 
 
+def declines_text(report: DailySuccessReport) -> str:
+    """The decline breakdown as plain, selectable text for copy/paste."""
+    lines = [
+        "ATM institutions below 98.5% - decline response codes",
+        f"Excluded response codes: {excluded_codes_text()}",
+        "",
+    ]
+    below = below_green_declines(report)
+    if not below:
+        lines.append("All ATM institutions are at or above 98.5%.")
+    for bank, rate, items in below:
+        lines.append(f"{bank} ({rate * 100:.1f}%)")
+        for code, count, description in items:
+            lines.append(f"  {code:<4} {description:<40} {count:>8}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
 def preview_height(report: DailySuccessReport) -> int:
-    """Height for the Streamlit iframe holding the preview and decline detail."""
-    detail_count = sum(len(items) for _, _, items in below_green_declines(report))
-    return (120 + max(len(report.pos), len(report.atm)) * 28
-            + 45 + max(detail_count, 1) * 28)
+    """Height for the Streamlit iframe holding only the rate table."""
+    return 130 + max(len(report.pos), len(report.atm)) * 28
 
 
 # --------------------------------------------------------------------------
@@ -617,66 +634,6 @@ def build_success_rate_excel(report: DailySuccessReport) -> bytes:
         anchor.fill = PatternFill(fill_type="solid", fgColor=Color(theme=0))
     ws.cell(row=last_row, column=5).border = _border(bottom=True)
 
-    # ATM institutions outside the green band, with the declines still counted.
-    below_green = below_green_declines(report)
-    section_row = last_row + 2
-    ws.merge_cells(start_row=section_row, start_column=3,
-                   end_row=section_row, end_column=7)
-    heading = ws.cell(
-        row=section_row, column=3,
-        value=("ATM institutions below 98.5% - decline response codes "
-               f"(excluded: {excluded_codes_text()})"))
-    heading.font = _TITLE_FONT
-    heading.fill = _TITLE_FILL
-    heading.alignment = Alignment(horizontal="left", vertical="center")
-    for column in range(3, 8):
-        ws.cell(row=section_row, column=column).border = _border(
-            left=column == 3, right=column == 7, top=True, bottom=True)
-
-    detail_header = section_row + 1
-    for column, label in ((3, "ATM Bank"), (4, "RC"), (5, "Declines")):
-        cell = ws.cell(row=detail_header, column=column, value=label)
-        cell.font = _HEADER_FONT
-        cell.border = _border(left=True, right=True, top=True, bottom=True)
-    ws.merge_cells(start_row=detail_header, start_column=6,
-                   end_row=detail_header, end_column=7)
-    desc_head = ws.cell(row=detail_header, column=6, value="Description")
-    desc_head.font = _HEADER_FONT
-    ws.cell(row=detail_header, column=6).border = _border(
-        left=True, top=True, bottom=True)
-    ws.cell(row=detail_header, column=7).border = _border(
-        right=True, top=True, bottom=True)
-
-    detail_row = detail_header + 1
-    if not below_green:
-        ws.merge_cells(start_row=detail_row, start_column=3,
-                       end_row=detail_row, end_column=7)
-        cell = ws.cell(row=detail_row, column=3,
-                       value="All ATM institutions are at or above 98.5%.")
-        cell.font = _LABEL_FONT
-        for column in range(3, 8):
-            ws.cell(row=detail_row, column=column).border = _border(
-                left=column == 3, right=column == 7, top=True, bottom=True)
-    for bank, rate, items in below_green:
-        for code, count, description in items:
-            ws.cell(row=detail_row, column=3,
-                    value=f"{bank} ({rate * 100:.1f}%)").font = _LABEL_FONT
-            ws.cell(row=detail_row, column=4,
-                    value=int(code) if code.isdigit() else code).font = _LABEL_FONT
-            ws.cell(row=detail_row, column=5, value=count).font = _LABEL_FONT
-            ws.merge_cells(start_row=detail_row, start_column=6,
-                           end_row=detail_row, end_column=7)
-            desc = ws.cell(row=detail_row, column=6, value=description)
-            desc.font = Font(name="Calibri", size=11)
-            for column in (3, 4, 5):
-                ws.cell(row=detail_row, column=column).border = _border(
-                    left=True, right=True, top=True, bottom=True)
-            ws.cell(row=detail_row, column=6).border = _border(
-                left=True, top=True, bottom=True)
-            ws.cell(row=detail_row, column=7).border = _border(
-                right=True, top=True, bottom=True)
-            detail_row += 1
-
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -734,34 +691,6 @@ def build_preview_html(report: DailySuccessReport) -> str:
         right = _side_cell(atm, "ATM", last)
         rows.append(f"<tr>{left}{divider}{right}</tr>")
 
-    below_green = below_green_declines(report)
-    detail_rows: list[str] = []
-    for bank, rate, items in below_green:
-        for code, count, description in items:
-            detail_rows.append(
-                "<tr>"
-                f"<td class='dbank'>{html.escape(bank)} ({rate * 100:.1f}%)</td>"
-                f"<td class='dcell'>{html.escape(code)}</td>"
-                f"<td class='dcell'>{count}</td>"
-                f"<td class='ddesc'>{html.escape(description)}</td>"
-                "</tr>"
-            )
-    if not below_green:
-        detail_rows.append(
-            "<tr><td class='ddesc' colspan='4'>"
-            "All ATM institutions are at or above 98.5%.</td></tr>")
-    detail_html = (
-        "<div class='detail'><table class='detail-table'>"
-        "<tr><td class='detail-title' colspan='4'>"
-        "ATM institutions below 98.5% - decline response codes "
-        f"(excluded: {html.escape(excluded_codes_text())})</td></tr>"
-        "<tr><td class='detail-head'>ATM Bank</td><td class='detail-head'>RC</td>"
-        "<td class='detail-head'>Declines</td>"
-        "<td class='detail-head'>Description</td></tr>"
-        + "".join(detail_rows) +
-        "</table></div>"
-    )
-
     png_name = report_filename(report).replace(".xlsx", ".png")
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'/><style>"
@@ -786,16 +715,6 @@ def build_preview_html(report: DailySuccessReport) -> str:
         ".head-divider{border-top:1px solid #000;border-bottom:1px solid #000;padding:0;}"
         ".emptybox{border-left:1px solid #000;}"
         ".emptybox.last{border-bottom:1px solid #000;}"
-        ".detail{margin-top:12px;}"
-        ".detail-table{border-collapse:collapse;margin:0;}"
-        ".detail-table td{border:1px solid #000;padding:3px 8px;height:20px;}"
-        ".detail-title{background:#ED7D31;color:#000;font-family:Calibri,sans-serif;"
-        "font-size:11px;font-weight:700;}"
-        ".detail-head{font-family:Calibri,sans-serif;font-size:11px;font-weight:700;"
-        "text-align:center;}"
-        ".dbank,.dcell,.ddesc{font-family:Calibri,sans-serif;font-size:11px;}"
-        ".dbank{font-weight:700;}"
-        ".dcell{text-align:center;}"
         "</style>"
         "<script src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'></script>"
         "</head><body>"
@@ -809,9 +728,7 @@ def build_preview_html(report: DailySuccessReport) -> str:
         "<td class='head' colspan='2'>ATM </td>"
         "</tr>"
         + "".join(rows) +
-        "</table>"
-        + detail_html +
-        "</div>"
+        "</table></div>"
         "<script>"
         "function capturePNG(){var e=document.getElementById('report-content');"
         "var w=e.scrollWidth,h=e.scrollHeight;"

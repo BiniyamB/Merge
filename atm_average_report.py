@@ -66,12 +66,10 @@ __all__ = [
     "build_atm_average_excel",
     "build_average_frame",
     "duplicate_days",
-    "parse_date_text",
     "rate_fill",
     "read_daily_report",
     "read_daily_reports",
     "report_filename",
-    "resolve_cell_value",
 ]
 
 # --------------------------------------------------------------------------
@@ -583,10 +581,3 @@ def report_filename(days: list[ParsedDay]) -> str:
         return f"ATM_Average_Success_Rate_{first:%d-%b-%Y}.xlsx"
     return (f"ATM_Average_Success_Rate_{first:%d-%b-%Y}"
             f"_to_{last:%d-%b-%Y}.xlsx")
-
-
-#: Public names shared with the daily POS & ATM success-rate report, which
-#: reads the same workbooks and needs the same date/formula handling. They are
-#: bound here, after both private helpers have been defined.
-parse_date_text = _parse_date_text
-resolve_cell_value = _resolve_formula

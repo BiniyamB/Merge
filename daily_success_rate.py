@@ -27,18 +27,13 @@ from __future__ import annotations
 import calendar
 import html
 import io
+import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
 import openpyxl
 from openpyxl.styles import Alignment, Border, Color, Font, PatternFill, Side
-
-from atm_average_report import (
-    ATM_RATE_TIERS,
-    parse_date_text,
-    resolve_cell_value,
-)
 
 __all__ = [
     "DailySuccessReport",
@@ -69,9 +64,95 @@ POS_RATE_TIERS = (
     ("< 80%", 0.0, "FFFF0000"),
 )
 
+#: The ATM bands, kept here so this module has no dependency on any other
+#: report module (a stale deploy of one must not break this report).
+_ATM_RATE_TIERS = (
+    ("98.5% - 100%", 0.985, "FF00B050", "FF000000"),
+    ("90% - 98.4%", 0.90, "FFFFFF00", "FF000000"),
+    ("80% - 89%", 0.80, "FFFFC000", "FF000000"),
+    ("<= 79%", 0.0, "FFFF0000", "FFFFFFFF"),
+)
+
+_DATE_RE = re.compile(r"([A-Za-z]{3,9})\.?\s+(\d{1,2})\s*,\s*(\d{4})")
+_MONTHS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _parse_date_text(text: str | None) -> date | None:
+    """Pull a date out of free text such as ``November 16,2026``."""
+    if not text:
+        return None
+    match = _DATE_RE.search(str(text))
+    if not match:
+        return None
+    month_name, day, year = match.groups()
+    month = _MONTHS.get(month_name[:3].lower())
+    if not month:
+        return None
+    try:
+        return date(int(year), month, int(day))
+    except ValueError:
+        return None
+
+
+def _resolve_formula(ws_values, ws_formulas, column: int, row: int,
+                     depth: int = 0) -> float | None:
+    """Read a rate cell, preferring Excel's cached result.
+
+    The rate rows are formulas such as ``=B45/B46`` or ``=B42``. When the
+    workbook has been opened in Excel the cached value is used; otherwise the
+    short arithmetic behind the formula is resolved from the cells it points
+    at. ``depth`` guards against cycles in hand-edited reports.
+    """
+    formula = ws_formulas.cell(row=row, column=column).value
+    if not isinstance(formula, str) or not formula.startswith("="):
+        cached = ws_values.cell(row=row, column=column).value
+        return _to_float(cached if cached is not None else formula)
+    if depth > 20:
+        return None
+
+    expression = formula[1:].strip()
+
+    def _sum_range(match: re.Match) -> str:
+        first_col = openpyxl.utils.cell.column_index_from_string(match.group(1))
+        last_col = openpyxl.utils.cell.column_index_from_string(match.group(3))
+        start, end = int(match.group(2)), int(match.group(4))
+        if end < start or last_col < first_col:
+            return "0.0"
+        total = 0.0
+        for col_index in range(first_col, last_col + 1):
+            for row_index in range(start, end + 1):
+                part = _resolve_formula(ws_values, ws_formulas, col_index,
+                                        row_index, depth + 1)
+                if part is not None:
+                    total += part
+        return repr(total)
+
+    expression = re.sub(
+        r"SUM\(\s*([A-Z]{1,3})(\d+)\s*:\s*([A-Z]{1,3})(\d+)\s*\)",
+        _sum_range,
+        expression,
+    )
+
+    def _cell_ref(match: re.Match) -> str:
+        col_index = openpyxl.utils.cell.column_index_from_string(match.group(1))
+        part = _resolve_formula(ws_values, ws_formulas, col_index,
+                                int(match.group(2)), depth + 1)
+        return repr(part if part is not None else 0.0)
+
+    expression = re.sub(r"\b([A-Z]{1,3})(\d+)\b", _cell_ref, expression)
+    if not re.fullmatch(r"[\d\s+\-*/().%]*", expression):
+        return None
+    try:
+        return float(eval(expression, {"__builtins__": {}}, {}))  # noqa: S307
+    except (ZeroDivisionError, SyntaxError, ValueError, TypeError, NameError):
+        return None
+
 
 def _tiers_for(kind: str) -> tuple:
-    return POS_RATE_TIERS if kind == "POS" else ATM_RATE_TIERS
+    return POS_RATE_TIERS if kind == "POS" else _ATM_RATE_TIERS
 
 
 def _fill_for(rate: float, kind: str) -> PatternFill:
@@ -132,7 +213,7 @@ class DailySuccessReport:
 
 def parse_report_date(text: str | None) -> date | None:
     """Parse a date out of a report title or file name."""
-    return parse_date_text(text)
+    return _parse_date_text(text)
 
 
 def pretty_date(day: date) -> str:
@@ -246,8 +327,8 @@ def _read_one(data: bytes, source: str = "") -> SourceReport:
 
         rates: dict[str, float] = {}
         for bank, column in zip(banks, columns):
-            value = _to_float(resolve_cell_value(ws, ws_formulas, column,
-                                                  rate_row))
+            value = _to_float(_resolve_formula(ws, ws_formulas, column,
+                                               rate_row))
             if value is not None:
                 rates[bank] = value
         if not rates:
@@ -257,7 +338,7 @@ def _read_one(data: bytes, source: str = "") -> SourceReport:
 
         total_value = None
         if total_column is not None:
-            total_value = _to_float(resolve_cell_value(
+            total_value = _to_float(_resolve_formula(
                 ws, ws_formulas, total_column, rate_row))
         if total_value is None:
             total_value = sum(rates.values()) / len(rates)

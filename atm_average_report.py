@@ -66,10 +66,12 @@ __all__ = [
     "build_atm_average_excel",
     "build_average_frame",
     "duplicate_days",
+    "parse_date_text",
     "rate_fill",
     "read_daily_report",
     "read_daily_reports",
     "report_filename",
+    "resolve_cell_value",
 ]
 
 # --------------------------------------------------------------------------
@@ -217,22 +219,26 @@ def _resolve_formula(ws_values, ws_formulas, column: int, row: int,
     expression = formula[1:].strip()
 
     def _sum_range(m: re.Match) -> str:
-        letter, start, end = m.group(1), int(m.group(2)), int(m.group(4))
-        if end < start:
+        first_col = openpyxl.utils.cell.column_index_from_string(m.group(1))
+        last_col = openpyxl.utils.cell.column_index_from_string(m.group(3))
+        start, end = int(m.group(2)), int(m.group(4))
+        if end < start or last_col < first_col:
             return "0.0"
-        column_index = openpyxl.utils.cell.column_index_from_string(letter)
         total = 0.0
-        for row_index in range(start, end + 1):
-            part = _resolve_formula(ws_values, ws_formulas, column_index,
-                                    row_index, depth + 1)
-            if part is not None:
-                total += part
+        # A Total column sums a whole row of banks, e.g. SUM(B42:W42), so the
+        # range has to cover columns as well as rows.
+        for column_index in range(first_col, last_col + 1):
+            for row_index in range(start, end + 1):
+                part = _resolve_formula(ws_values, ws_formulas, column_index,
+                                        row_index, depth + 1)
+                if part is not None:
+                    total += part
         return repr(total)
 
-    # Expand SUM(<col><first>:<col><last>) before the plain cell references.
+    # Expand SUM(<cell>:<cell>) before the plain cell references.
     expression = re.sub(
         r"SUM\(\s*([A-Z]{1,3})(\d+)\s*:\s*([A-Z]{1,3})(\d+)\s*\)",
-        lambda m: _sum_range(m) if m.group(1) == m.group(3) else "0.0",
+        _sum_range,
         expression,
     )
 
@@ -577,3 +583,10 @@ def report_filename(days: list[ParsedDay]) -> str:
         return f"ATM_Average_Success_Rate_{first:%d-%b-%Y}.xlsx"
     return (f"ATM_Average_Success_Rate_{first:%d-%b-%Y}"
             f"_to_{last:%d-%b-%Y}.xlsx")
+
+
+#: Public names shared with the daily POS & ATM success-rate report, which
+#: reads the same workbooks and needs the same date/formula handling. They are
+#: bound here, after both private helpers have been defined.
+parse_date_text = _parse_date_text
+resolve_cell_value = _resolve_formula

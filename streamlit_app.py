@@ -44,6 +44,7 @@ from ips_report import (
     filter_ips_by_dates,
 )
 import atm_average_report as atm_avg
+import daily_success_rate as dsr
 
 import product_mapping as pm
 
@@ -51,6 +52,7 @@ import product_mapping as pm
 _THEME = st.session_state.get("theme", "dark")
 st.session_state.setdefault("mode_key", "pos_decline")
 st.session_state.setdefault("snap_page", False)
+st.session_state.setdefault("daily_rate_result", None)
 
 _PALETTES = {
     "dark": {
@@ -1256,6 +1258,8 @@ MODE_CARDS = [
      "desc": "Daily financial & decline report sheet", "type": "type-blue", "badge": "badge-blue"},
     {"key": "atm_avg", "name": "ATM Average", "icon": "📈",
      "desc": "Average ATM success rate from daily reports", "type": "type-green", "badge": "badge-green"},
+    {"key": "daily_rate", "name": "POS & ATM Rate", "icon": "📊",
+     "desc": "Daily POS and ATM success rates side by side", "type": "type-violet", "badge": "badge-purple"},
 ]
 mode_keys_map = {c["name"]: c["key"] for c in MODE_CARDS}
 mode_colors = {c["name"]: c["badge"] for c in MODE_CARDS}
@@ -1288,6 +1292,7 @@ for i, card in enumerate(MODE_CARDS):
             st.session_state.ips_dates = []
             st.session_state.ips_selected_dates = []
             st.session_state.daily_result = None
+            st.session_state.daily_rate_result = None
             gc.collect()
 
 if st.session_state.mode_key is None:
@@ -1944,7 +1949,100 @@ if mode_key == "ips":
     # Falls through to the shared Results / Filter & Export sections below.
 
 
-if mode_key != "ips":
+# ── Daily POS & ATM Success Rate (daily_rate mode) ───────────────────────────
+if mode_key == "daily_rate":
+    st.markdown(f'<span class="badge {mode_color}">POS &amp; ATM RATE</span>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-purple">2</div>'
+        '<div><p class="card-title">Upload the daily POS and ATM reports</p>'
+        '<p class="card-sub">Upload the <b>POS SUCCESS RATE</b> workbook and the '
+        '<b>ATM Declined Transaction Report</b> for the same day. Every bank&rsquo;s '
+        'success rate is read from each report and written side by side, exactly '
+        'like the reference sheet. If the two report dates disagree, a date '
+        'difference error is shown instead.</p></div></div>',
+        unsafe_allow_html=True,
+    )
+    rate_col1, rate_col2 = st.columns(2)
+    with rate_col1:
+        rate_pos_file = st.file_uploader(
+            "POS SUCCESS RATE report", type=["xlsx", "xls"], key="daily_rate_pos")
+    with rate_col2:
+        rate_atm_file = st.file_uploader(
+            "ATM Declined Transaction Report", type=["xlsx", "xls"], key="daily_rate_atm")
+
+    if not rate_pos_file or not rate_atm_file:
+        st.info("Upload both reports to generate the daily POS & ATM success rate report.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
+    if st.button("Generate POS & ATM Rate Report", use_container_width=True,
+                 key="daily_rate_generate"):
+        with st.spinner("Reading both daily reports..."):
+            try:
+                rate_sources = dsr.read_reports([
+                    (rate_pos_file.name, rate_pos_file.getvalue()),
+                    (rate_atm_file.name, rate_atm_file.getvalue()),
+                ])
+                st.session_state.daily_rate_result = dsr.combine(rate_sources)
+                del rate_sources
+            except ValueError as exc:
+                st.session_state.daily_rate_result = None
+                st.error(str(exc))
+            except Exception as exc:  # noqa: BLE001
+                st.session_state.daily_rate_result = None
+                st.error(f"Unexpected error while building the report: {exc}")
+            gc.collect()
+
+    rate_report = st.session_state.daily_rate_result
+    if rate_report is None:
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
+    st.markdown(
+        '<div class="card"><div class="card-head"><div class="card-icon icon-green">&#10003;</div>'
+        f'<div><p class="card-title">{rate_report.title}</p>'
+        f'<p class="card-sub">Matching dates &middot; {len(rate_report.pos) - 1} POS banks '
+        f'and {len(rate_report.atm) - 1} ATM banks</p></div></div>',
+        unsafe_allow_html=True,
+    )
+    rate_m1, rate_m2, rate_m3, rate_m4 = st.columns(4)
+    rate_m1.metric("Report date", dsr.pretty_date(rate_report.day))
+    rate_m2.metric("POS banks", len(rate_report.pos) - 1)
+    rate_m3.metric("ATM banks", len(rate_report.atm) - 1)
+    rate_m4.metric("POS / ATM total",
+                   f"{rate_report.pos_total * 100:.0f}% / {rate_report.atm_total * 100:.2f}%")
+
+    st.markdown('<div class="section-sep"><span>Preview &amp; Export</span></div>', unsafe_allow_html=True)
+    components.html(
+        dsr.build_preview_html(rate_report),
+        height=140 + max(len(rate_report.pos), len(rate_report.atm)) * 30,
+        scrolling=True,
+    )
+    st.caption("Use the Download PNG button in the preview to save an image. PNG export "
+               "loads html2canvas from a CDN, so an internet connection is required.")
+
+    if st.button("Download Excel Report", use_container_width=True,
+                 key="daily_rate_dl_excel"):
+        with st.spinner("Building the workbook..."):
+            rate_excel = dsr.build_success_rate_excel(rate_report)
+        st.download_button(
+            label="Click to save the Excel report",
+            data=rate_excel,
+            file_name=dsr.report_filename(rate_report),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="daily_rate_dl_excel_actual",
+        )
+        del rate_excel
+        gc.collect()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+
+if mode_key not in ("ips", "daily_rate"):
     mode = MODES[mode_key]
 
     st.markdown(f'<span class="badge {mode_color}">{mode.label}</span>', unsafe_allow_html=True)

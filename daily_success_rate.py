@@ -548,54 +548,71 @@ def _html_colour(rate: float, kind: str) -> str:
     return "#" + tiers[-1][2][2:]
 
 
-def _rate_cell(rate: float | None, kind: str) -> str:
-    if rate is None:
-        return "<td class='rate'></td>"
+def _rate_cell(rate: float, kind: str) -> str:
     text = f"{rate * 100:.0f}%" if kind == "POS" else f"{rate * 100:.2f}%"
-    return (f"<td class='rate' style='background:{_html_colour(rate, kind)}'>"
+    font = "posrate" if kind == "POS" else "atmrate"
+    return (f"<td class='rate {font}' style='background:{_html_colour(rate, kind)}'>"
             f"{text}</td>")
 
 
+def _side_cell(entry: tuple[str, float | None], kind: str, last: bool) -> str:
+    """One two-column side of a row, or the empty block when a side ended."""
+    if entry[1] is None:
+        return ("<td class='emptybox last' colspan='2'></td>" if last
+                else "<td class='emptybox' colspan='2'></td>")
+    return (f"<td class='bank'>{html.escape(str(entry[0]))}</td>"
+            f"{_rate_cell(entry[1], kind)}")
+
+
 def build_preview_html(report: DailySuccessReport) -> str:
-    """Return a self-contained HTML table with a PNG download button."""
+    """Return the sample-styled HTML table with a PNG download button."""
     rows: list[str] = []
-    for index in range(max(len(report.pos), len(report.atm))):
+    row_count = max(len(report.pos), len(report.atm))
+    for index in range(row_count):
         pos = report.pos[index] if index < len(report.pos) else ("", None)
         atm = report.atm[index] if index < len(report.atm) else ("", None)
-        rows.append(
-            "<tr>"
-            f"<td class='bank'>{html.escape(str(pos[0]))}</td>{_rate_cell(pos[1], 'POS')}"
-            "<td class='divider'></td>"
-            f"<td class='bank'>{html.escape(str(atm[0]))}</td>{_rate_cell(atm[1], 'ATM')}"
-            "</tr>"
-        )
+        last = index == row_count - 1
+        divider = "<td class='divider last'></td>" if last else "<td class='divider'></td>"
+        left = _side_cell(pos, "POS", last)
+        right = _side_cell(atm, "ATM", last)
+        rows.append(f"<tr>{left}{divider}{right}</tr>")
 
     png_name = report_filename(report).replace(".xlsx", ".png")
-    height = 130 + max(len(report.pos), len(report.atm)) * 30
+    height = 150 + max(len(report.pos), len(report.atm)) * 28
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'/><style>"
-        "body{margin:0;font-family:Arial,'Segoe UI',sans-serif;color:#111;background:#fff;}"
+        "body{margin:0;font-family:Arial,sans-serif;color:#000;background:#fff;}"
         ".toolbar{padding:8px;text-align:right;}"
         ".toolbar button{background:#2563eb;color:#fff;border:0;border-radius:5px;"
         "padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer;}"
         "#report-content{padding:6px 10px 14px;background:#fff;}"
-        "table{border-collapse:collapse;margin:0 auto;font-size:13px;}"
-        "td{padding:4px 9px;height:21px;}"
-        ".title{text-align:center;font-weight:700;font-size:15px;padding-bottom:8px;}"
-        ".group{text-align:center;font-weight:700;border-bottom:1px solid #333;}"
-        ".bank{font-weight:700;min-width:86px;}"
-        ".rate{min-width:62px;font-weight:700;}"
-        ".divider{width:26px;border:0;padding:0;}"
+        "table{border-collapse:collapse;margin:0 auto;}"
+        "td{padding:3px 8px;height:20px;}"
+        ".title{border:1px solid #000;background:#ED7D31;color:#000;text-align:center;"
+        "font-family:Calibri,sans-serif;font-size:11px;font-weight:700;}"
+        ".head{border:1px solid #000;border-bottom:0;text-align:center;"
+        "font-family:Calibri,sans-serif;font-size:11px;font-weight:700;}"
+        ".bank{border:1px solid #000;font-family:Calibri,sans-serif;font-size:11px;"
+        "font-weight:700;text-align:left;min-width:86px;}"
+        ".rate{border:1px solid #000;text-align:left;min-width:56px;}"
+        ".posrate{font-family:Calibri,sans-serif;font-size:11px;font-weight:700;}"
+        ".atmrate{font-family:Arial,sans-serif;font-size:10px;font-weight:700;}"
+        ".divider{border-left:0;border-right:0;padding:0 6px;width:18px;}"
+        ".divider.last{border-bottom:1px solid #000;}"
+        ".head-divider{border-top:1px solid #000;border-bottom:1px solid #000;padding:0;}"
+        ".emptybox{border-left:1px solid #000;}"
+        ".emptybox.last{border-bottom:1px solid #000;}"
         "</style>"
         "<script src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'></script>"
         "</head><body>"
         "<div class='toolbar'><button onclick='capturePNG()'>Download PNG</button></div>"
         "<div id='report-content'>"
-        f"<div class='title'>{html.escape(report.title)}</div>"
-        "<table><tr>"
-        "<td class='group' colspan='2'>POS</td>"
-        "<td class='divider'></td>"
-        "<td class='group' colspan='2'>ATM</td>"
+        "<table>"
+        f"<tr><td class='title' colspan='5'>{html.escape(report.title)}</td></tr>"
+        "<tr>"
+        "<td class='head' colspan='2'>POS </td>"
+        "<td class='divider head-divider'></td>"
+        "<td class='head' colspan='2'>ATM </td>"
         "</tr>"
         + "".join(rows) +
         "</table></div>"

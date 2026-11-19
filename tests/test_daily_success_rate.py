@@ -2,6 +2,7 @@
 
 import calendar
 import io
+import re
 from datetime import date
 from pathlib import Path
 
@@ -128,7 +129,25 @@ def test_preview_html_offers_a_png_download():
     assert "html2canvas" in html
     assert "Daily_POS_and_ATM_Success_Rate_16-Nov-2026.png" in html
     assert "#00B050" in html
+    assert "#ED7D31" in html
+    assert "border:1px solid #000" in html
     assert "95%" in html and "99.30%" in html
+
+
+def test_preview_rows_stay_aligned_when_one_side_is_shorter():
+    payloads = [
+        ("POS.xlsx", synthetic("POS", date(2026, 11, 16), ["Abay"], [0.95], 0.95)),
+        ("ATM.xlsx", synthetic("ATM", date(2026, 11, 16),
+                               ["CBE", "BOA", "LION"],
+                               [0.993, 0.996, 0.862], 0.991)),
+    ]
+    html = dsr.build_preview_html(dsr.combine(dsr.read_reports(payloads)))
+    table = html[html.index("<table>"):html.index("</table>")]
+    for row in table.split("<tr>")[3:]:
+        cells = re.findall(r"<td([^>]*)>", row)
+        columns = sum(int(re.search(r"colspan='(\d+)'", cell).group(1))
+                      if "colspan" in cell else 1 for cell in cells)
+        assert columns == 5, row
 
 
 def test_excel_filename():

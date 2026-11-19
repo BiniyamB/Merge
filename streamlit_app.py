@@ -2017,7 +2017,7 @@ if mode_key == "daily_rate":
     st.markdown('<div class="section-sep"><span>Preview &amp; Export</span></div>', unsafe_allow_html=True)
     components.html(
         dsr.build_preview_html(rate_report),
-        height=140 + max(len(rate_report.pos), len(rate_report.atm)) * 30,
+        height=150 + max(len(rate_report.pos), len(rate_report.atm)) * 28,
         scrolling=True,
     )
     st.caption("Use the Download PNG button in the preview to save an image. PNG export "

@@ -155,6 +155,34 @@ def test_excel_filename():
         "Daily_POS_and_ATM_Success_Rate_16-Nov-2026.xlsx")
 
 
+def test_below_green_declines_exclude_the_cardholder_codes():
+    report = dsr.combine(dsr.read_reports(sample_payloads()))
+    detail = dsr.below_green_declines(report)
+    banks = {bank for bank, _, _ in detail}
+    assert banks == {"BUNNA", "ENAT", "LION", "OIB", "ZAMZAM", "HIJRA",
+                     "SINQEE", "AMHARA", "Tseday"}
+    excluded = {str(code) for code in dsr.EXCLUDED_DECLINE_CODES}
+    for _, _, items in detail:
+        assert all(code not in excluded for code, _, _ in items)
+    oib = {code: count for bank, _, items in detail if bank == "OIB"
+           for code, count, _ in items}
+    assert oib == {"801": 159, "802": 357, "939": 15, "905": 2, "917": 24}
+
+
+def test_excel_and_preview_include_the_decline_detail():
+    report = dsr.combine(dsr.read_reports(sample_payloads()))
+    ws = openpyxl.load_workbook(
+        io.BytesIO(dsr.build_success_rate_excel(report))).active
+    rows = [[cell.value for cell in row] for row in ws.iter_rows()]
+    assert any("ATM institutions below 98.5%" in str(value)
+               for row in rows for value in row if value is not None)
+    assert any(row[3] == 801 and row[4] == 159 for row in rows if len(row) > 4)
+
+    html = dsr.build_preview_html(report)
+    assert "ATM institutions below 98.5%" in html
+    assert "159" in html and "excluded: 821, 901" in html
+
+
 def test_generated_workbook_matches_the_reference_sample():
     """Every value, fill, format, font, border and merge matches sample.xlsx."""
     path = ROOT / SAMPLE_FILE
@@ -166,9 +194,8 @@ def test_generated_workbook_matches_the_reference_sample():
         io.BytesIO(dsr.build_success_rate_excel(report))).active
     expected = openpyxl.load_workbook(path).active
 
-    assert generated.dimensions == expected.dimensions
-    assert {str(m) for m in generated.merged_cells.ranges} == {
-        str(m) for m in expected.merged_cells.ranges}
+    expected_merges = {str(m) for m in expected.merged_cells.ranges}
+    assert expected_merges <= {str(m) for m in generated.merged_cells.ranges}
 
     def describe(cell):
         fill = cell.fill
@@ -183,7 +210,7 @@ def test_generated_workbook_matches_the_reference_sample():
         return (cell.value, colour, cell.number_format, cell.font.name,
                 cell.font.sz, cell.font.bold, border)
 
-    for row in range(1, max(generated.max_row, expected.max_row) + 1):
-        for column in range(1, max(generated.max_column, expected.max_column) + 1):
+    for row in range(1, expected.max_row + 1):
+        for column in range(1, expected.max_column + 1):
             assert describe(generated.cell(row, column)) == describe(
                 expected.cell(row, column)), f"cell {generated.cell(row, column).coordinate}"

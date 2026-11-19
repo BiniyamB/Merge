@@ -518,8 +518,8 @@ def excluded_codes_text() -> str:
 def preview_height(report: DailySuccessReport) -> int:
     """Height for the Streamlit iframe holding the preview and decline detail."""
     detail_count = sum(len(items) for _, _, items in below_green_declines(report))
-    return (150 + max(len(report.pos), len(report.atm)) * 28
-            + 70 + max(detail_count, 1) * 24)
+    return (120 + max(len(report.pos), len(report.atm)) * 28
+            + 45 + max(detail_count, 1) * 28)
 
 
 # --------------------------------------------------------------------------
@@ -763,15 +763,14 @@ def build_preview_html(report: DailySuccessReport) -> str:
     )
 
     png_name = report_filename(report).replace(".xlsx", ".png")
-    height = preview_height(report)
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'/><style>"
         "body{margin:0;font-family:Arial,sans-serif;color:#000;background:#fff;}"
         ".toolbar{padding:8px;text-align:right;}"
         ".toolbar button{background:#2563eb;color:#fff;border:0;border-radius:5px;"
         "padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer;}"
-        "#report-content{padding:6px 10px 14px;background:#fff;}"
-        "table{border-collapse:collapse;margin:0 auto;}"
+        "#report-content{display:inline-block;padding:0;margin:0;background:#fff;}"
+        "table{border-collapse:collapse;margin:0;}"
         "td{padding:3px 8px;height:20px;}"
         ".title{border:1px solid #000;background:#ED7D31;color:#000;text-align:center;"
         "font-family:Calibri,sans-serif;font-size:11px;font-weight:700;}"
@@ -787,8 +786,8 @@ def build_preview_html(report: DailySuccessReport) -> str:
         ".head-divider{border-top:1px solid #000;border-bottom:1px solid #000;padding:0;}"
         ".emptybox{border-left:1px solid #000;}"
         ".emptybox.last{border-bottom:1px solid #000;}"
-        ".detail{margin-top:14px;}"
-        ".detail-table{border-collapse:collapse;margin:0 auto;}"
+        ".detail{margin-top:12px;}"
+        ".detail-table{border-collapse:collapse;margin:0;}"
         ".detail-table td{border:1px solid #000;padding:3px 8px;height:20px;}"
         ".detail-title{background:#ED7D31;color:#000;font-family:Calibri,sans-serif;"
         "font-size:11px;font-weight:700;}"
@@ -814,13 +813,13 @@ def build_preview_html(report: DailySuccessReport) -> str:
         + detail_html +
         "</div>"
         "<script>"
-        "function capturePNG(){var t=document.querySelector('.toolbar');"
-        "var e=document.getElementById('report-content');t.style.visibility='hidden';"
-        "html2canvas(e,{scale:2,useCORS:true,backgroundColor:'#ffffff',windowWidth:760,"
-        f"windowHeight:{height}}})"
-        ".then(function(c){t.style.visibility='visible';var a=document.createElement('a');"
+        "function capturePNG(){var e=document.getElementById('report-content');"
+        "var w=e.scrollWidth,h=e.scrollHeight;"
+        "html2canvas(e,{scale:2,useCORS:true,backgroundColor:'#ffffff',"
+        "width:w,height:h,scrollX:0,scrollY:0,windowWidth:w,windowHeight:h})"
+        ".then(function(c){var a=document.createElement('a');"
         f"a.download='{html.escape(png_name)}';a.href=c.toDataURL('image/png');a.click();}})"
-        ".catch(function(err){t.style.visibility='visible';"
+        ".catch(function(err){"
         "alert('PNG export needs internet (html2canvas loads from CDN): '+err.message);});}"
         "</script></body></html>"
     )

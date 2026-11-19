@@ -131,6 +131,8 @@ def test_preview_html_offers_a_png_download():
     assert "#00B050" in html
     assert "#ED7D31" in html
     assert "border:1px solid #000" in html
+    assert "#report-content{display:inline-block;padding:0" in html
+    assert "width:w,height:h,scrollX:0,scrollY:0" in html
     assert "95%" in html and "99.30%" in html
 
 

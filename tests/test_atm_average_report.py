@@ -194,6 +194,30 @@ def test_resolves_a_formula_success_row_with_no_cached_values():
     assert parsed.rates["BOA"] == pytest.approx(236 / 260)
 
 
+def test_resolves_if_formula_success_row_with_no_cached_values():
+    """Rate cells wrapping division in ``IF(denom=0,1,num/denom)`` resolve."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws["A1"] = "EthSwitch \nNovember 25,2026  Transaction Decline Response Summary"
+    ws["A4"] = "RC/BANK NAME"
+    ws["B4"], ws["C4"] = "CBE", "WEGAGEN"
+    ws["A5"] = 901
+    ws["B5"], ws["C5"] = 10, 0
+    ws["A6"] = "Issu. SUCC. RATE (%)"
+    ws["B6"], ws["C6"] = "=B9", "=C9"
+    ws["B7"], ws["B8"], ws["B9"] = 990, 1000, "=IF(B8=0,1,B7/B8)"
+    ws["C7"], ws["C8"], ws["C9"] = 0, 0, "=IF(C8=0,1,C7/C8)"
+
+    parsed = read_daily_report(
+        workbook_bytes(wb),
+        "ATM Declined Transaction Report for Nov 25,2026.xlsx",
+    ).parsed
+
+    assert parsed is not None
+    assert parsed.rates["CBE"] == pytest.approx(0.99)
+    assert parsed.rates["WEGAGEN"] == pytest.approx(1.0)
+
+
 def test_flags_a_file_name_and_report_date_that_disagree():
     """A mismatched date is reported, and the report date is used."""
     _, data = payloads()[0]

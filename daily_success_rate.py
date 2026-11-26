@@ -108,58 +108,224 @@ def _parse_date_text(text: str | None) -> date | None:
         return None
 
 
+_EXCEL_FUNC_RE = re.compile(
+    r"\b(IFERROR|AVERAGE|ROUND|SUM|MIN|MAX|IF)\s*\(",
+    re.IGNORECASE,
+)
+_CELL_RANGE_RE = re.compile(
+    r"^\$?([A-Z]{1,3})\$?(\d+)\s*:\s*\$?([A-Z]{1,3})\$?(\d+)$"
+)
+_CELL_REF_RE = re.compile(r"\$?\b([A-Z]{1,3})\$?(\d+)\b")
+
+
+def _find_matching_paren(text: str, open_idx: int) -> int:
+    """Return the index of the closing ``)`` matching ``text[open_idx]``."""
+    depth = 0
+    for idx in range(open_idx, len(text)):
+        ch = text[idx]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return idx
+    return -1
+
+
+def _split_top_level_args(text: str) -> list[str]:
+    """Split ``text`` on commas outside parentheses."""
+    args: list[str] = []
+    depth = 0
+    start = 0
+    for idx, ch in enumerate(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            args.append(text[start:idx].strip())
+            start = idx + 1
+    tail = text[start:].strip()
+    if tail or args:
+        args.append(tail)
+    return args
+
+
+def _eval_excel_condition(cond: str, ws_values, ws_formulas,
+                          depth: int) -> bool | None:
+    """Evaluate a simple comparison such as ``B41=0`` or ``B41>0``."""
+    for op in ("<>", "!=", "<=", ">=", "=", "<", ">"):
+        # Split on the first top-level occurrence of op.
+        p_depth = 0
+        for idx in range(len(cond) - len(op) + 1):
+            ch = cond[idx]
+            if ch == "(":
+                p_depth += 1
+            elif ch == ")":
+                p_depth -= 1
+            elif p_depth == 0 and cond[idx:idx + len(op)] == op:
+                lhs = _eval_excel_expr(cond[:idx], ws_values, ws_formulas, depth)
+                rhs = _eval_excel_expr(cond[idx + len(op):], ws_values,
+                                       ws_formulas, depth)
+                if lhs is None or rhs is None:
+                    return None
+                if op == "=":
+                    return lhs == rhs
+                if op in ("<>", "!="):
+                    return lhs != rhs
+                if op == "<=":
+                    return lhs <= rhs
+                if op == ">=":
+                    return lhs >= rhs
+                if op == "<":
+                    return lhs < rhs
+                if op == ">":
+                    return lhs > rhs
+    val = _eval_excel_expr(cond, ws_values, ws_formulas, depth)
+    return bool(val) if val is not None else None
+
+
+def _eval_excel_func(name: str, arg_str: str, ws_values, ws_formulas,
+                     depth: int) -> float | None:
+    func = name.upper()
+    args = _split_top_level_args(arg_str)
+
+    if func == "IF":
+        if len(args) < 2:
+            return None
+        cond_val = _eval_excel_condition(args[0], ws_values, ws_formulas, depth)
+        if cond_val is None:
+            return None
+        branch = args[1] if cond_val else (args[2] if len(args) >= 3 else "0")
+        return _eval_excel_expr(branch, ws_values, ws_formulas, depth)
+
+    if func == "IFERROR":
+        if len(args) < 2:
+            return None
+        val = _eval_excel_expr(args[0], ws_values, ws_formulas, depth)
+        if val is not None:
+            return val
+        return _eval_excel_expr(args[1], ws_values, ws_formulas, depth)
+
+    if func in ("SUM", "AVERAGE", "MIN", "MAX"):
+        values: list[float] = []
+        for arg in args:
+            if not arg:
+                continue
+            range_m = _CELL_RANGE_RE.match(arg.strip())
+            if range_m:
+                first_col = openpyxl.utils.cell.column_index_from_string(
+                    range_m.group(1))
+                last_col = openpyxl.utils.cell.column_index_from_string(
+                    range_m.group(3))
+                start, end = int(range_m.group(2)), int(range_m.group(4))
+                for col_index in range(first_col, last_col + 1):
+                    for row_index in range(start, end + 1):
+                        if (ws_formulas.cell(row_index, col_index).value is None
+                                and ws_values.cell(row_index, col_index).value is None):
+                            continue
+                        part = _resolve_formula(ws_values, ws_formulas,
+                                                col_index, row_index, depth + 1)
+                        if part is not None:
+                            values.append(part)
+            else:
+                val = _eval_excel_expr(arg, ws_values, ws_formulas, depth)
+                if val is not None:
+                    values.append(val)
+        if func == "SUM":
+            return float(sum(values))
+        if not values:
+            return None
+        if func == "AVERAGE":
+            return float(sum(values) / len(values))
+        return float(min(values) if func == "MIN" else max(values))
+
+    if func == "ROUND":
+        if len(args) != 2:
+            return None
+        val = _eval_excel_expr(args[0], ws_values, ws_formulas, depth)
+        digits = _eval_excel_expr(args[1], ws_values, ws_formulas, depth)
+        if val is None or digits is None:
+            return None
+        return float(round(val, int(digits)))
+
+    return None
+
+
+def _eval_excel_expr(expression: str, ws_values, ws_formulas,
+                     depth: int) -> float | None:
+    expr = expression.strip()
+    if not expr:
+        return None
+
+    while True:
+        match = _EXCEL_FUNC_RE.search(expr)
+        if not match:
+            break
+        open_idx = match.end() - 1
+        close_idx = _find_matching_paren(expr, open_idx)
+        if close_idx == -1:
+            return None
+        func_val = _eval_excel_func(
+            match.group(1),
+            expr[open_idx + 1:close_idx],
+            ws_values,
+            ws_formulas,
+            depth,
+        )
+        if func_val is None:
+            return None
+        expr = f"{expr[:match.start()]}{repr(func_val)}{expr[close_idx + 1:]}"
+
+    missing_ref = False
+
+    def _cell_ref(match: re.Match) -> str:
+        nonlocal missing_ref
+        col_index = openpyxl.utils.cell.column_index_from_string(match.group(1))
+        row_index = int(match.group(2))
+        if (ws_formulas.cell(row_index, col_index).value is None
+                and ws_values.cell(row_index, col_index).value is None):
+            return "0.0"
+        part = _resolve_formula(ws_values, ws_formulas, col_index,
+                                row_index, depth + 1)
+        if part is None:
+            missing_ref = True
+            return "0.0"
+        return repr(part)
+
+    expr = _CELL_REF_RE.sub(_cell_ref, expr)
+    if missing_ref:
+        return None
+    expr = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"(\1/100.0)", expr)
+    if not re.fullmatch(r"[\d\s+\-*/().eE]*", expr):
+        return None
+    try:
+        return float(eval(expr, {"__builtins__": {}}, {}))  # noqa: S307
+    except (ZeroDivisionError, SyntaxError, ValueError, TypeError, NameError):
+        return None
+
+
 def _resolve_formula(ws_values, ws_formulas, column: int, row: int,
                      depth: int = 0) -> float | None:
     """Read a rate cell, preferring Excel's cached result.
 
-    The rate rows are formulas such as ``=B45/B46`` or ``=B42``. When the
-    workbook has been opened in Excel the cached value is used; otherwise the
-    short arithmetic behind the formula is resolved from the cells it points
-    at. ``depth`` guards against cycles in hand-edited reports.
+    The rate rows are formulas such as ``=B45/B46``, ``=B42``, or
+    ``=IF(B41=0,1,B40/B41)``. When the workbook has been opened in Excel the
+    cached value is used; otherwise the formula is resolved from the cells it
+    points at. ``depth`` guards against cycles in hand-edited reports.
     """
+    cached = ws_values.cell(row=row, column=column).value
+    cached_num = _to_float(cached)
+    if cached_num is not None:
+        return cached_num
+
     formula = ws_formulas.cell(row=row, column=column).value
     if not isinstance(formula, str) or not formula.startswith("="):
-        cached = ws_values.cell(row=row, column=column).value
-        return _to_float(cached if cached is not None else formula)
+        return _to_float(formula)
     if depth > 20:
         return None
 
-    expression = formula[1:].strip()
-
-    def _sum_range(match: re.Match) -> str:
-        first_col = openpyxl.utils.cell.column_index_from_string(match.group(1))
-        last_col = openpyxl.utils.cell.column_index_from_string(match.group(3))
-        start, end = int(match.group(2)), int(match.group(4))
-        if end < start or last_col < first_col:
-            return "0.0"
-        total = 0.0
-        for col_index in range(first_col, last_col + 1):
-            for row_index in range(start, end + 1):
-                part = _resolve_formula(ws_values, ws_formulas, col_index,
-                                        row_index, depth + 1)
-                if part is not None:
-                    total += part
-        return repr(total)
-
-    expression = re.sub(
-        r"SUM\(\s*([A-Z]{1,3})(\d+)\s*:\s*([A-Z]{1,3})(\d+)\s*\)",
-        _sum_range,
-        expression,
-    )
-
-    def _cell_ref(match: re.Match) -> str:
-        col_index = openpyxl.utils.cell.column_index_from_string(match.group(1))
-        part = _resolve_formula(ws_values, ws_formulas, col_index,
-                                int(match.group(2)), depth + 1)
-        return repr(part if part is not None else 0.0)
-
-    expression = re.sub(r"\b([A-Z]{1,3})(\d+)\b", _cell_ref, expression)
-    if not re.fullmatch(r"[\d\s+\-*/().%]*", expression):
-        return None
-    try:
-        return float(eval(expression, {"__builtins__": {}}, {}))  # noqa: S307
-    except (ZeroDivisionError, SyntaxError, ValueError, TypeError, NameError):
-        return None
+    return _eval_excel_expr(formula[1:], ws_values, ws_formulas, depth)
 
 
 def _tiers_for(kind: str) -> tuple:

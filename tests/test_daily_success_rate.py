@@ -101,6 +101,42 @@ def test_reads_rates_written_as_formulas():
                                           ("BIB", 0.88), ("Total", 0.98)]
 
 
+def test_reads_atm_if_formula_with_no_cached_values():
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws["A1"] = "EthSwitch November 25,2026 Transaction Decline Response Summary"
+    ws["A4"] = "RC/BANK NAME"
+    ws["B4"] = "CBE"
+    ws["C4"] = "WEGAGEN"
+    ws["D4"] = "Total"
+    ws["A5"] = 901
+    ws["B5"] = 10
+    ws["C5"] = 0
+    ws["A35"] = "TOTAL"
+    ws["B35"] = "=SUM(B5:B5)"
+    ws["C35"] = "=SUM(C5:C5)"
+    ws["D35"] = "=SUM(B35:C35)"
+    ws["A36"] = "Issu. SUCC. RATE (%)"
+    ws["B36"] = "=B42"
+    ws["C36"] = "=C42"
+    ws["D36"] = "=D42"
+    ws["B40"] = 990
+    ws["B41"] = 1000
+    ws["B42"] = "=IF(B41=0,1,B40/B41)"
+    ws["C40"] = 0
+    ws["C41"] = 0
+    ws["C42"] = "=IF(C41=0,1,C40/C41)"
+    ws["D40"] = "=SUM(B40:C40)"
+    ws["D41"] = "=SUM(B41:C41)"
+    ws["D42"] = "=IF(D41=0,1,D40/D41)"
+
+    report = dsr.read_reports([("ATM.xlsx", workbook_bytes(wb))])[0]
+    assert report.error is None
+    assert report.rates["CBE"] == pytest.approx(0.99)
+    assert report.rates["WEGAGEN"] == pytest.approx(1.0)
+    assert report.total == pytest.approx(0.99)
+
+
 def test_different_dates_raise_a_date_difference_error():
     with pytest.raises(ValueError, match="date difference"):
         combined(atm_day=date(2026, 11, 17))
